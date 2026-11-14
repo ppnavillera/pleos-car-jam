@@ -50,6 +50,7 @@ sleep 3
 A logcat -c
 
 # ---- D 전환 ----
+OFF=$(python3 "$ROOT/scripts/vc_measure.py" offset 2>/dev/null || echo 0)   # 에뮬레이터 시계가 호스트보다 앞선 ms (지연 보정)
 T=$(bash "$ROOT/scripts/vc.sh" gear-timed D | head -1)
 PUT_MS=$(echo "$T" | sed 's/.*PUT_START_MS=\([0-9]*\).*/\1/')
 sleep 1.5
@@ -58,8 +59,9 @@ STOP_LINE=$(grep 'PJAM_ENG' "$OUT/gear-2-d.log" | grep ' STOP$' | head -1)
 if [ -z "$STOP_LINE" ]; then fail gear-d-stops-engine "D 전환 뒤 엔진 STOP 로그 없음 ($OUT/gear-2-d.log)"; else
   STOP_MS=$(echo "$STOP_LINE" | ms_of)
   SRC=$(grep 'STOP reason' "$OUT/gear-2-d.log" | head -1 | sed 's/.*reason=\[\(.*\)\]/\1/')
-  pass gear-d-stops-engine "D 전환 → 엔진 STOP $((STOP_MS - PUT_MS))ms, 신호: $SRC"
-  [ $((STOP_MS - PUT_MS)) -lt 1000 ] && pass gear-d-stop-within-1s || fail gear-d-stop-within-1s "$((STOP_MS - PUT_MS))ms"
+  LAT=$((STOP_MS - PUT_MS - OFF))
+  pass gear-d-stops-engine "D 전환 → 엔진 STOP ${LAT}ms (시계 오차 ${OFF}ms 보정), 신호: $SRC"
+  [ $LAT -lt 1000 ] && pass gear-d-stop-within-1s || fail gear-d-stop-within-1s "${LAT}ms"
   # STOP 이후 루프가 더 돌지 않아야 한다
   sleep 5.5
   A logcat -d -v epoch -s PJAM_ENG:I >"$OUT/gear-3-after.log"

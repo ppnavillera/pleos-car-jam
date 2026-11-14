@@ -5,6 +5,8 @@
 #   scripts/vc.sh steering -540..540
 #   scripts/vc.sh turn Off|BlinkLeft|BlinkRight|FlashLeft|FlashRight
 #   scripts/vc.sh gear-timed P|R|N|D   (PUT 직전·직후의 호스트 시각(ms)과 VC 기록 시각을 출력: 지연 측정용)
+#   scripts/vc.sh put /vehicle/hvac ac=true fan_speed=5   (카탈로그 docs/vc-catalog.json 의 write_endpoint 와 control.field 로 아무 카드나 조작)
+#   scripts/vc.sh get hvac            (GET /vehicle/state 의 한 키를 JSON 으로 출력)
 #   scripts/vc.sh state
 # 원리: 쓰기 API(PUT)는 브라우저 세션이 살아 있을 때만 열린다(emulator_inactive).
 #       페이지가 1초마다 보내는 하트비트 POST /browser/session 를 우리가 대신 보낸다.
@@ -22,6 +24,13 @@ case "${1:-state}" in
     case "$2" in P) g=Park;; R) g=Reverse;; N) g=Neutral;; D) g=Drive;; *) echo "gear P|R|N|D"; exit 2;; esac
     curl -s -m 5 -X PUT "$BASE/vehicle/gear?gear=$g" >/dev/null; sleep 0.5; beat
     state_field "print(d['gear']['actual']['value'])" ;;
+  put)
+    ep="$2"; shift 2; q=""; for kv in "$@"; do q="$q&$kv"; done
+    # 응답은 상태 전체(수십 KB)라서 오류일 때만 앞부분을 보여 준다
+    resp=$(curl -s -m 5 -X PUT "$BASE$ep?${q#&}"); case "$resp" in *'"error"'*) echo "${resp:0:200}";; *) echo "ok";; esac
+    sleep 0.3; beat ;;
+  get)
+    state_field "print(json.dumps(d.get('$2'), ensure_ascii=False))" ;;
   gear-timed)
     case "$2" in P) g=Park;; R) g=Reverse;; N) g=Neutral;; D) g=Drive;; *) echo "gear-timed P|R|N|D"; exit 2;; esac
     python3 -I - "$BASE" "$g" <<'PY'

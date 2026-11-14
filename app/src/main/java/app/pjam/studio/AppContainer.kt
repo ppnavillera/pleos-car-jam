@@ -8,10 +8,12 @@ import app.pjam.studio.engine.Clock
 import app.pjam.studio.engine.EngineCommand
 import app.pjam.studio.engine.EngineRunner
 import app.pjam.studio.engine.LoopEngine
+import app.pjam.studio.engine.StepLagStats
 import app.pjam.studio.input.FakeVehicleInputSource
 import app.pjam.studio.input.VehicleInputSource
 import app.pjam.studio.input.pleos.PleosGearSource
 import app.pjam.studio.input.pleos.PleosVehicleInputSource
+import app.pjam.studio.input.pleos.SignalProbe
 import app.pjam.studio.lock.PlaybackGuard
 import app.pjam.studio.sound.AudioFocusController
 import app.pjam.studio.sound.SoundPoolSampler
@@ -20,7 +22,17 @@ import app.pjam.studio.sound.SoundPoolSampler
 class AppContainer(context: Context) {
     val clock = Clock { SystemClock.elapsedRealtimeNanos() }
     val sampler = SoundPoolSampler(context)
-    val engine = LoopEngine(sampler) { Log.i("PJAM_ENG", it) }
+    /** 스텝 호출 시각 오차(T0-13/T2-9). 200스텝(100BPM에서 30초)마다 한 줄 요약. */
+    val stepLag = StepLagStats()
+    private var lagSteps = 0
+    val engine = LoopEngine(
+        sampler,
+        log = { Log.i("PJAM_ENG", it) },
+        onStepFired = { scheduled ->
+            stepLag.add(SystemClock.elapsedRealtimeNanos() - scheduled)
+            if (++lagSteps % 200 == 0) Log.i("PJAM_LAG", stepLag.summary().toString())
+        },
+    )
     private val runner = EngineRunner(engine, clock) {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
     }
@@ -49,6 +61,7 @@ class AppContainer(context: Context) {
     init {
         runner.start()
         try { pleosInput.start() } catch (t: Throwable) { Log.w("PJAM_PLEOS", "start failed: $t") }
+        try { SignalProbe(context).start() } catch (t: Throwable) { Log.w("PJAM_V2", "probe start failed: $t") } // 디버그에서만 동작
         try { gearSource.start() } catch (t: Throwable) { Log.w("PJAM_GEAR", "start failed: $t") }
     }
 }
