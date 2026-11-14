@@ -29,7 +29,8 @@ class SoundPoolSampler(context: Context, private val packId: String = "basic") :
     private val loadedCount = AtomicInteger(0)
     @Volatile var totalCount: Int = 0
         private set
-    @Volatile private var recentStreams = IntArray(0)
+    /** 최근에 시작한 스트림. stopAll이 이것들을 실제로 멈춘다. 샘플이 1초 이내라 32개면 충분하다. */
+    private val recentStreams = java.util.concurrent.ConcurrentLinkedQueue<Int>()
 
     val allLoaded: Boolean get() = totalCount > 0 && loadedCount.get() == totalCount
 
@@ -66,13 +67,17 @@ class SoundPoolSampler(context: Context, private val packId: String = "basic") :
         }
         val vol = velocity.coerceIn(0f, 1f)
         val rate = 2.0.pow(transpose / 12.0).toFloat().coerceIn(0.5f, 2.0f)
-        pool.play(id, vol, vol, 1, 0, rate)
+        val stream = pool.play(id, vol, vol, 1, 0, rate)
+        if (stream != 0) {
+            recentStreams.add(stream)
+            while (recentStreams.size > 32) recentStreams.poll()
+        }
     }
 
     override fun stopAll() {
-        // SoundPool은 전체 정지가 없어 autoPause로 대신한다. 짧은 샘플이라 곧 끝난다.
-        pool.autoPause()
-        pool.autoResume()
+        // SoundPool은 전체 정지가 없어 시작한 스트림을 하나씩 stop() 한다.
+        // (이전 구현의 autoPause+autoResume은 멈췄다가 바로 다시 재생해서 아무것도 멈추지 못했다.)
+        while (true) { val s = recentStreams.poll() ?: break; pool.stop(s) }
     }
 
     fun release() {

@@ -2,6 +2,16 @@
 
 계획서(`P-JAM_개발_계획서_에이전트용_v2.md`)에서 바꾼 것. 여기 적힌 내용이 계획서와 다르면 이 문서를 따른다. 최신이 위.
 
+## 2026-11-15 (3) 기어 판정과 잠금 (계획서 3.6, T1-11, T2-8)
+
+| 계획서 | 실제 | 조치 |
+|---|---|---|
+| 3.6 단계 1: `CarPropertyManager` GEAR_SELECTION 구독, 안 되면 pleos 권한 | Vehicle SDK `Gear`가 있고 CAR_DRIVE만으로 읽힌다. CarPropertyManager는 `android.car.permission.CAR_POWERTRAIN`이 있어야 하고 `pleos.car...`로는 안 된다 | **SDK Gear를 기본으로 한다(= 3.6 단계 1에 해당).** CarPropertyManager → UX 제한 → P로 간주는 SDK 값이 없을 때만 내려가는 대체다 |
+| 3.1 `GearSource`만 Car API를 만진다 | 구현을 `input/pleos/PleosGearSource`에 두고 Throwable을 잡는다. 판정·잠금 로직은 Android 의존 없는 `lock/PlaybackGuard` | 단위 테스트 가능 |
+| (정의 없음) 권한 | `android.car.permission.CAR_POWERTRAIN`은 **디버그 매니페스트에만** 둔다 | 릴리스에 넣으면 승인 안 된 권한으로 심사에서 떨어질 위험(계획서 1.3). 필요하면 사용자가 결정 |
+| T2-8 백그라운드 정지 | 기어 잠금과 같은 `PlaybackGuard.onStop` 경로. 기준은 Activity `onStop` | 방향지시등 사각지대 창이 onPause·포커스 손실을 일으켜서 onPause 기준은 못 쓴다 (FINDINGS V3) |
+| 3.3 기어 이탈 시 | 엔진 Stop(녹음 종료·내용 유지·정지), 입력 차단, 포커스 반납. P 복귀 시 자동 재생 없음 | `scripts/gear_regression.sh` |
+
 ## 2026-11-15 (2) 입력 판정 규칙 두 개가 필요 없어짐 (계획서 3.4)
 
 | 계획서 | 실제 | 조치 |

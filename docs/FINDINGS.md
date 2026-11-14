@@ -20,6 +20,8 @@ Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + �
 | TurnSignal.checkTurnSignalStateCapabilities | 위와 같음 | 람다 | CapabilityConfig(accessType) | 없음 | `pleos.car.permission.CAR_LIGHTS` |
 | TurnSignal.getCurrentTurnSignalState | onComplete:(TurnSignalValue?)->Unit, onFailed | 람다 | `constant.area.TurnSignalValue`: **OFF(0), RIGHT(1), LEFT(2)**. Blink/Flash 구분 없음 | 없음 | CAR_LIGHTS |
 | TurnSignal.registerTurnSignalState / unregister… | listener: `listener.TurnSignalStateListener` | `onTurnSignalStateUpdated(state: TurnSignalValue?)` + onFailed | enum | 없음 | CAR_LIGHTS |
+| Gear.getCurrentGearSelectionState | onComplete:(VehicleGear)->Unit, onFailed | 람다 | `constant.control.VehicleGear`: GEAR_UNKNOWN, NEUTRAL, REVERSE, **PARK**, DRIVE, GEAR_1..9. capability 확인 메서드 없음 | 없음 | `pleos.car.permission.CAR_DRIVE` |
+| Gear.registerGearSelection / unregister… | listener: `listener.GearSelectionListener` | `onSelected(gear: VehicleGear?)` + onFailed | VehicleGear? (**nullable로 오버라이드해야 컴파일됨**) | 없음 | CAR_DRIVE |
 | Vehicle | 생성자 `Vehicle(Context)`, `initialize()`, `release()` (반환·콜백 없음) | — | 접근자는 **`getBrake()` / `getTurnSignal()` 메서드 호출**로만 된다 (`vehicle.brake` 프로퍼티 구문은 컴파일 오류: private) | — | — |
 
 - AAR 매니페스트: `uses-permission ai.pleos.playground.service.vehicle.VEHICLE_BINDING`, `<queries>` 액션 `ai.pleos.playground.vehicle.VEHICLE_START`, 서비스 최소 버전 2.3.13. 앱은 `pleos.car.permission.CAR_DRIVE`, `CAR_LIGHTS`를 선언했고 설치·호출이 모두 성공했다.
@@ -45,10 +47,49 @@ M0에서 14개 항목 전체를 확인한다. 지금까지: 브레이크 지원(
   - `scripts/vc.sh gear P|R|N|D`, `brake N`, `steering N`, `state`로 감쌌다. check.sh가 시작 시 `vc.sh gear P`를 부른다.
 - 발견: 이 세션 시작 때 에뮬레이터 기어가 `Drive`(source: web)였고, 그 상태에서는 플랫폼이 앱을 "주행 중에는 사용할 수 없습니다"로 가린다(앱 코드 문제 아님). Park으로 돌려 해결.
 
-## V3 기어
-- 미착수(M0). M-P에서는 3.6의 4단계("P로 간주 + 기어 확인 불가")로 둔다.
-- **카탈로그 단서:** Virtual Console의 Gear Selection 카드의 차량 속성은 표준 `GEAR_SELECTION`(0x11400400)이 아니라 **벤더 속성 `VENDOR_GEAR_SELECTION` 0x21400400**이다. 표준 `CarPropertyManager.GEAR_SELECTION` 구독이 안 될 수 있다. M0에서 표준(0x11400400) → 벤더(0x21400400) 순으로 시도한다.
-- 플랫폼은 기어가 P가 아니면 주행 최적화 미선언 앱을 가린다(실측). 즉 "D에서 소리 정지"는 플랫폼이 이미 앱을 가리는 것과 겹친다.
+## V3 기어 (T0-7, 2026-11-15 실측)
+**결론: 계획서 3.6의 단계 1에 해당한다.** 기어 속성(GEAR_SELECTION)을 Vehicle SDK `Gear.registerGearSelection`(권한 CAR_DRIVE, 이미 선언)으로 읽는다. 계획서 1.1의 "SDK로 기어를 못 읽는다"는 틀렸다(AAR에 `Gear` 클래스가 있다).
+
+**읽기 경로별 결과**
+
+| 경로 | 결과 |
+|---|---|
+| Vehicle SDK `Gear` (CAR_DRIVE) | **동작.** 초기값 `GEAR_PARK`, 전환마다 `onSelected` 콜백(Binder 스레드). 앱의 기본 판정 |
+| `CarPropertyManager` GEAR_SELECTION 0x11400400, CURRENT_GEAR 0x11400401 | 권한 선언 전: `SecurityException: requires android.car.permission.CAR_POWERTRAIN`. **`android.car.permission.CAR_POWERTRAIN`을 선언하면 읽힘**(에뮬레이터가 grant). `pleos.car.permission.CAR_POWERTRAIN`만으로는 부족. 구독 콜백도 옴 |
+| 벤더 속성 0x21400400 (Virtual Console 카드의 속성) | `requires android.car.permission.CAR_VENDOR_EXTENSION`, 에뮬레이터가 grant 안 함 → **읽을 수 없음**. 표준 0x11400400은 같은 기어 값을 준다 |
+| `CarUxRestrictions` | 동작. D에서 `requiresDistractionOptimization=true`(activeRestrictions=80), P에서 false. 권한 불필요 |
+| Activity 생명주기 | **D 전환에는 신호가 없다.** onPause·onStop·창 포커스 변화 모두 안 옴(플랫폼이 가림막을 앱 밖에서 덮는다). 소리가 계속 났던 원인 |
+
+**D 전환부터 신호가 오기까지 (호스트 `PUT` 직전 시각 기준, D·P 각 6회, 호스트-에뮬레이터 시계 오차 ±30ms)**
+
+| 신호 | 지연 |
+|---|---|
+| SDK Gear 콜백 | 72~84ms (Virtual Console이 값을 기록한 시각으로부터 2~8ms) |
+| CarPropertyManager 콜백 | SDK와 같은 순간 (+84 / +75ms) |
+| CarUxRestrictions 콜백 | 81~122ms (한 번 192ms) |
+| 앱 엔진 STOP 로그 (`gear_regression.sh` 측정) | **87, 93, 101ms** — SDK 콜백 → `PlaybackGuard` → 엔진 Stop |
+| 오디오 출력 스레드 standby | 마지막 소리 뒤 약 3초(오디오 플링거 standby 지연 3000ms) |
+
+**처리 (계획서 3.6의 단계 1)**
+- 잠금 판정은 SDK 기어를 따른다: P가 아니면 잠금 화면 + 엔진 Stop(녹음 중이면 끝내고 내용 유지) + 오디오 포커스 반납. 기어를 SDK가 못 줄 때만 CarPropertyManager → UX 제한 → "P로 간주" 순으로 내려간다(`PleosGearSource`, 화면 상단에 어느 방식인지 표시).
+- **CarUxRestrictions는 병행 정지 신호가 아니라 기어를 모를 때의 대체다.** 기어를 P로 아는데 UX 제한이 걸리는 경우는 잠그지 않는다(실차에서 P단 오탐 방지). SDK 콜백을 놓치는 경우의 이중화는 UX가 SDK보다 약 10~40ms 늦게 오므로 별도로 하지 않았다.
+- **릴리스 매니페스트에는 `android.car.permission.CAR_POWERTRAIN`을 넣지 않았다.** SDK 경로가 CAR_DRIVE만으로 되고, 승인 안 된 권한을 선언하면 심사에서 떨어질 수 있어서다(계획서 1.3). 디버그 매니페스트(`app/src/debug/`)에만 두어 CarPropertyManager 경로를 시험한다. 결정은 PLAN_CHANGES에 적었다. 사용자가 원하면 릴리스에도 넣을 수 있다.
+- 입력 차단: 플랫폼이 화면을 가려도 SDK 콜백은 계속 온다. 비활성(잠금·백그라운드) 중에는 차량·화면 입력이 소리도 포커스도 만들지 않는다(`PJAM_LOCK input dropped`).
+- P 복귀: 트랙 데이터 그대로, 재생은 정지 상태(자동 재생 안 함). `scripts/gear_regression.sh`가 확인한다.
+
+**백그라운드 신호 (T2-8과 같은 경로)**
+
+| 상황 | 앱에 오는 신호 |
+|---|---|
+| HOME 키 | 이 에뮬레이터에서는 앱이 오른쪽 창에 그대로 떠 있고 포커스가 67ms 깜빡일 뿐이다. `onPause`/`onStop` 없음 → 앱은 여전히 전경이라 소리를 멈출 근거가 없다 |
+| 다른 앱으로 전환 (시계 앱으로 시험) | 창 포커스 손실 → **약 650ms 뒤 onPause → 5ms 뒤 onStop** |
+| **방향지시등 켬** | 플랫폼이 `ai.umos.car.evs/.CarEvsBlindSpotCameraPreviewActivity`를 앱 위에 띄운다. `onPause`와 포커스 손실은 오지만 **`onStop`은 오지 않는다**(앱은 보임). 끄면 `onResume`으로 복귀 |
+
+→ 백그라운드 판정은 **`onStop`**으로 한다. 처음에는 onPause와 포커스 손실(250ms 디바운스)을 걸었다가, 방향지시등을 켤 때마다 앱이 백그라운드로 처리되어 이후 방향지시등 입력(앱의 핵심 연주 입력)이 버려지는 것을 `check.sh`의 `vc-turn-right-flash`가 잡아서 `onStop`으로 바꿨다. 대가는 다른 앱 전환 시 정지가 포커스 손실보다 약 0.65초 늦는 것이다. 회귀 확인: `turn-overlay-*`.
+
+**고친 버그: `SoundPoolSampler.stopAll()`이 아무것도 멈추지 못했다.** `autoPause()` 직후 `autoResume()`을 불러 바로 재생이 이어졌다. 시작한 스트림 ID를 기억해 하나씩 `stop()` 하도록 바꿨다.
+
+**회귀 확인**: `scripts/gear_regression.sh` (check.sh 4c, 21줄). 재생 중 gear D → 엔진 STOP(1초 안) → STOP 뒤 루프 wrap 없음 → 오디오 출력 standby가 루프 한 바퀴(4.8초)보다 길게 유지 → D에서 브레이크 입력은 버려지고 포커스도 안 잡음 → gear P → 트랙 칸 수가 그대로 → 잠금 화면 없음 → 재생 자동 시작 안 함. 이어서 다른 앱으로 전환 → 정지 → 복귀 시 데이터 그대로·자동 재생 없음, 방향지시등 사각지대 창에서 정지하지 않음. `PlaybackGuard` 단위 테스트 8개. 정지 호출을 빼고 돌리면 `gear-d-stops-engine`·`gear-d-silent-after-input`·`gear-p-not-autoplay`·`gear-p-silent`가 FAIL 하는 것을 확인했다(음성 대조).
 
 ## V4 핸들
 - 미착수(M0). 카탈로그 단서: Steering Angle 카드의 범위는 **−470..500**, 1° 단위(공식 문서의 −540..540과 다름). 차량 속성 `PERF_STEERING_ANGLE` 0x11600209. `GET /vehicle/state`의 `controls.limits.steering_deg`는 [-540,540].
@@ -74,7 +115,8 @@ M0에서 14개 항목 전체를 확인한다. 지금까지: 브레이크 지원(
 | 날짜 | 내용 | 근거 | 조치 |
 |---|---|---|---|
 | 2026-11-15 | 스티어링 범위: 카드 −470..500 (문서 −540..540) | `docs/vc-catalog.json` | V4에서 실측 후 구간 경계 확정 |
-| 2026-11-15 | 기어 속성이 벤더 속성 0x21400400 | `docs/vc-catalog.json` | V3에서 표준→벤더 순 시도 |
+| 2026-11-15 | 기어 속성이 벤더 속성 0x21400400 | `docs/vc-catalog.json` | 벤더 속성은 권한 때문에 못 읽지만 표준 0x11400400이 같은 값을 준다 (V3) |
+| 2026-11-15 | 계획서 1.1 "SDK로 기어를 못 읽는다" | SDK 2.3.2에 `Gear` API가 있고 에뮬레이터에서 동작 (V1·V3) | 3.6 단계 1을 SDK로 구현 |
 | 2026-11-15 | 툴체인이 계획서 3.1(AGP 8.8.2, Kotlin 2.0.0)과 다름. 템플릿의 AGP 9.5.1/Gradle 9.6 유지, Kotlin 2.4.0 | AGP 8.8.2는 캐시에 없고 현재 Android Studio가 AGP 9.x 템플릿을 만든다. Vehicle SDK 2.3.2가 이 조합에서 내려받기·빌드 성공 | 유지. 문제가 생기면 PLAN_CHANGES에 기록 |
 | 2026-11-15 | compileSdk 36 (계획서: 34, 필요 시 35) | 최신 AndroidX 라이브러리가 compileSdk 35+ 요구 | targetSdk는 34 유지 |
 | 2026-11-15 | 명세 문서 위치 `app/docs/` → `docs/` | CLAUDE.md는 루트 `docs/`를 기준 경로로 둠 | 이동 완료 |
@@ -85,3 +127,5 @@ M0에서 14개 항목 전체를 확인한다. 지금까지: 브레이크 지원(
 | 2026-11-15 | 에뮬레이터 기어가 D이면 플랫폼이 앱을 가린다 | 앱 화면 대신 "주행 중에는 사용할 수 없습니다" | 앱을 못 열고 uiautomator 스모크가 실패 | `scripts/vc.sh gear P` (check.sh가 자동 실행) |
 | 2026-11-15 | `inject-vhal-event`는 user 빌드라 불가 | SecurityException | T0-0 ③ 사용 불가 | HTTP API(위 T0-0 ②) |
 | 2026-11-15 | `uiautomator dump`는 `exec-out ... /dev/tty`로 받는다 | /sdcard 경유 시 AAOS 사용자 10에서 경로 문제 가능 | check.sh가 /dev/tty 사용 |
+| 2026-11-15 | 방향지시등을 켜면 플랫폼이 사각지대 카메라 창을 앱 위에 띄운다 | 앱이 onPause·포커스 손실을 겪는다(onStop은 없음) | 백그라운드 판정을 onStop으로 한다 |
+| 2026-11-15 | HOME 키로는 앱이 가려지지 않는다(오른쪽 창 유지) | HOME으로 소리를 멈추는 동작은 이 에뮬레이터에서 시험할 수 없다 | 다른 앱 전환으로 시험 |

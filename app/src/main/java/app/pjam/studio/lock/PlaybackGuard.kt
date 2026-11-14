@@ -1,0 +1,64 @@
+package app.pjam.studio.lock
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * P단 잠금과 백그라운드 정지를 한곳에서 결정한다 (순수 Kotlin, Android 의존 없음).
+ *
+ * 소리를 멈추는 길은 둘이고 같은 `onStop` 으로 모인다.
+ *  - 잠금: 기어가 P가 아님(SDK 기어 신호), 기어를 모를 때는 UX 제한이 걸림, 디버그 강제 잠금
+ *  - 비활성: Activity가 onStop(다른 앱으로 전환). onPause·포커스 손실은 쓰지 않는다 — 방향지시등 때 뜨는 사각지대 창에도 오기 때문이다
+ * 활성 → 비활성으로 넘어가는 순간 `onStop(사유)`를 정확히 한 번 부른다. 엔진의 Stop은 녹음 중이면 녹음을 끝내고
+ * 내용을 유지한다. P/전경으로 돌아와도 **재생을 자동으로 다시 켜지 않는다**(정지 상태로 둔다).
+ * 비활성인 동안 들어오는 입력은 `allowInput()`이 막는다. 플랫폼이 화면을 가려도 SDK 콜백은 계속 오기 때문이다.
+ */
+class PlaybackGuard(
+    private val onStop: (reason: String) -> Unit,
+    private val log: (String) -> Unit = {},
+) : GearSink {
+    private val lock = Any()
+    private var gear = GearKind.UNKNOWN
+    private var ux: Boolean? = null
+    private var foreground = false
+    private var forced = false
+    private var wasActive = false
+
+    private val _locked = MutableStateFlow(false)
+    /** 잠금 화면을 띄울지. 백그라운드와 무관하다(화면이 안 보이는 동안은 의미가 없다). */
+    val locked: StateFlow<Boolean> = _locked
+
+    private val _gear = MutableStateFlow(GearKind.UNKNOWN)
+    val gearState: StateFlow<GearKind> = _gear
+
+    private val _method = MutableStateFlow(GearMethod.NONE_YET)
+    val method: StateFlow<GearMethod> = _method
+
+    private val _forced = MutableStateFlow(false)
+    val forcedLock: StateFlow<Boolean> = _forced
+
+    val active: Boolean get() = synchronized(lock) { !_locked.value && foreground }
+
+    /** 소리·녹음·재생 요청을 받아도 되는지. */
+    fun allowInput(): Boolean = active
+
+    override fun onGear(kind: GearKind, src: String) = update("gear=$kind src=$src") { gear = kind; _gear.value = kind }
+    override fun onUx(restricted: Boolean?, src: String) = update("ux=$restricted src=$src") { ux = restricted }
+    override fun onMethod(method: GearMethod) { _method.value = method; log("method=$method") }
+    fun onForeground(fg: Boolean, src: String) = update("foreground=$fg src=$src") { foreground = fg }
+    fun setForcedLock(on: Boolean) = update("forced=$on src=debug") { forced = on; _forced.value = on }
+
+    private inline fun update(what: String, change: () -> Unit) {
+        var stopReason: String? = null
+        synchronized(lock) {
+            change()
+            val lockedNow = forced || gear == GearKind.NOT_PARK || (gear == GearKind.UNKNOWN && ux == true)
+            _locked.value = lockedNow
+            val activeNow = !lockedNow && foreground
+            log("$what → locked=$lockedNow active=$activeNow")
+            if (wasActive && !activeNow) stopReason = what
+            wasActive = activeNow
+        }
+        stopReason?.let { onStop(it) } // 락 밖에서 부른다
+    }
+}

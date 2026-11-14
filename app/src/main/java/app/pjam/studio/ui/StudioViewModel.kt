@@ -53,6 +53,7 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
 
     /** 화면 패드: 누르는 순간(pointer-down)의 시각을 stamp해서 들어온다. */
     fun onPad(sampleId: String, timestampNanos: Long) {
+        if (!c.guard.allowInput()) return
         val id = mapper.onPad(sampleId)
         c.focus.acquire()
         c.engine.send(EngineCommand.Play(id, timestampNanos))
@@ -60,6 +61,8 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun onVehicleInput(e: InputEvent) {
+        // 플랫폼이 화면을 가려도 SDK 콜백은 계속 온다. 잠금·백그라운드 중에는 소리도 포커스도 만들지 않는다.
+        if (!c.guard.allowInput()) { android.util.Log.i("PJAM_LOCK", "input dropped (inactive): $e"); return }
         val kind = _selected.value
         when (e) {
             is InputEvent.Trigger -> {
@@ -92,8 +95,15 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
         c.engine.send(EngineCommand.SetMuted(k, !cur))
     }
 
-    fun togglePlay() { c.focus.acquire(); c.engine.send(EngineCommand.TogglePlay) }
-    fun toggleRecord() { c.focus.acquire(); c.engine.send(EngineCommand.ToggleRecord(_selected.value)) }
+    fun togglePlay() { if (!c.guard.allowInput()) return; c.focus.acquire(); c.engine.send(EngineCommand.TogglePlay) }
+    fun toggleRecord() { if (!c.guard.allowInput()) return; c.focus.acquire(); c.engine.send(EngineCommand.ToggleRecord(_selected.value)) }
+
+    // 잠금 상태 (기어)
+    val locked: StateFlow<Boolean> get() = c.guard.locked
+    val gear get() = c.guard.gearState
+    val gearMethod get() = c.guard.method
+    val forcedLock get() = c.guard.forcedLock
+    fun setForcedLock(on: Boolean) = c.guard.setForcedLock(on)
     fun clear(k: TrackKind) = c.engine.send(EngineCommand.ClearTrack(k))
     fun clearAll() = c.engine.send(EngineCommand.ClearAll)
     fun bpmDelta(d: Int) = c.engine.send(EngineCommand.SetBpm(engineState.value.bpm + d))

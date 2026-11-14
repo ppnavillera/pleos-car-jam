@@ -10,7 +10,9 @@ import app.pjam.studio.engine.EngineRunner
 import app.pjam.studio.engine.LoopEngine
 import app.pjam.studio.input.FakeVehicleInputSource
 import app.pjam.studio.input.VehicleInputSource
+import app.pjam.studio.input.pleos.PleosGearSource
 import app.pjam.studio.input.pleos.PleosVehicleInputSource
+import app.pjam.studio.lock.PlaybackGuard
 import app.pjam.studio.sound.AudioFocusController
 import app.pjam.studio.sound.SoundPoolSampler
 
@@ -24,6 +26,20 @@ class AppContainer(context: Context) {
     }
     val focus = AudioFocusController(context) { engine.send(EngineCommand.Stop) }
 
+    /**
+     * P단 잠금 + 백그라운드 정지. 기어가 P가 아니게 되거나 Activity가 onPause 되면 엔진을 Stop(녹음 중이면 끝내고 내용 유지)하고
+     * 오디오 포커스를 반납한다. P/전경으로 돌아와도 재생은 자동으로 켜지 않는다.
+     */
+    val guard = PlaybackGuard(
+        onStop = { reason ->
+            Log.i("PJAM_LOCK", "STOP reason=[$reason]")
+            engine.send(EngineCommand.Stop)
+            focus.release()
+        },
+        log = { Log.i("PJAM_LOCK", it) },
+    )
+    val gearSource = PleosGearSource(context, guard)
+
     /** 디버그 패널이 쓰는 가짜 입력. P7에서 실제 SDK 입력 소스를 병행한다. */
     val fakeInput = FakeVehicleInputSource(clock)
     /** 실제 SDK 입력. 실패해도 앱은 화면 조작만으로 동작한다. */
@@ -33,5 +49,6 @@ class AppContainer(context: Context) {
     init {
         runner.start()
         try { pleosInput.start() } catch (t: Throwable) { Log.w("PJAM_PLEOS", "start failed: $t") }
+        try { gearSource.start() } catch (t: Throwable) { Log.w("PJAM_GEAR", "start failed: $t") }
     }
 }

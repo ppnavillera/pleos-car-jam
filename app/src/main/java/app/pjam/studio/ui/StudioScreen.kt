@@ -72,6 +72,9 @@ fun StudioScreen(vm: StudioViewModel, debugPanel: Boolean) {
     val st by vm.engineState.collectAsStateWithLifecycle()
     val sel by vm.selected.collectAsStateWithLifecycle()
     val bar by vm.inputBar.collectAsStateWithLifecycle()
+    val locked by vm.locked.collectAsStateWithLifecycle()
+    val gear by vm.gear.collectAsStateWithLifecycle()
+    val method by vm.gearMethod.collectAsStateWithLifecycle()
 
     MaterialTheme(colorScheme = darkColorScheme()) {
         Box(Modifier.fillMaxSize().background(Bg).semantics { contentDescription = "pjam_root" }) {
@@ -79,7 +82,7 @@ fun StudioScreen(vm: StudioViewModel, debugPanel: Boolean) {
                 Modifier.fillMaxSize().padding(20.dp).semantics { contentDescription = "studio_screen" },
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                TopBar(st, sel, vm)
+                TopBar(st, sel, vm, gearText(gear, method))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     TrackKind.entries.forEach { k ->
                         val t = st.tracks.first { it.kind == k }
@@ -90,15 +93,16 @@ fun StudioScreen(vm: StudioViewModel, debugPanel: Boolean) {
                 PadRow(sel, vm)
                 if (debugPanel) DebugPanel(vm)
             }
+            if (locked) LockScreen(gearText(gear, method), vm)
         }
     }
 }
 
 @Composable
-private fun TopBar(st: EngineState, sel: TrackKind, vm: StudioViewModel) {
+private fun TopBar(st: EngineState, sel: TrackKind, vm: StudioViewModel, gearLabel: String) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("P-JAM", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Text("기어 확인 불가 (P로 간주)", fontSize = 14.sp, color = TextDim)
+        Text(gearLabel, fontSize = 14.sp, color = TextDim, modifier = Modifier.semantics { contentDescription = "gear_text" })
         Spacer(Modifier.weight(1f))
         val statusText = when {
             st.countInBeat > 0 -> "카운트인 ${st.countInBeat}/4"
@@ -248,6 +252,8 @@ private fun DebugPanel(vm: StudioViewModel) {
         DbgButton("dbg_auto", "AUTO") { f.toggle(ToggleSource.AUTO) }
         DbgButton("dbg_recirc", "내기순환") { f.toggle(ToggleSource.RECIRCULATION) }
         DbgButton("dbg_defrost", "성에 제거") { f.toggle(ToggleSource.DEFROSTER) }
+        val forced by vm.forcedLock.collectAsStateWithLifecycle()
+        DbgButton("dbg_force_lock", if (forced) "잠금 해제" else "잠금 강제") { vm.setForcedLock(!forced) }
     }
 }
 
@@ -263,4 +269,40 @@ private fun DbgButton(tag: String, label: String, onDown: () -> Unit) {
             .pointerInput(tag) { detectTapGestures(onPress = { onDown(); tryAwaitRelease() }) },
         contentAlignment = Alignment.Center,
     ) { Text(label, fontSize = 16.sp, color = Color.White) }
+}
+
+private fun gearText(gear: app.pjam.studio.lock.GearKind, method: app.pjam.studio.lock.GearMethod): String {
+    val g = when (gear) {
+        app.pjam.studio.lock.GearKind.PARK -> "P단"
+        app.pjam.studio.lock.GearKind.NOT_PARK -> "P단 아님"
+        app.pjam.studio.lock.GearKind.UNKNOWN -> "기어 확인 불가"
+    }
+    val m = when (method) {
+        app.pjam.studio.lock.GearMethod.SDK_GEAR -> "차량 SDK"
+        app.pjam.studio.lock.GearMethod.CAR_PROPERTY -> "차량 속성"
+        app.pjam.studio.lock.GearMethod.UX_RESTRICTIONS -> "주행 제한만 확인"
+        app.pjam.studio.lock.GearMethod.ASSUMED_PARK -> "P로 간주"
+        app.pjam.studio.lock.GearMethod.NONE_YET -> "확인 중"
+    }
+    return "$g ($m)"
+}
+
+/** 주차(P단)가 아니면 덮는 잠금 화면. 소리는 이미 멈췄다. P로 돌아오면 만들어 둔 루프는 그대로이고 재생만 정지 상태다. */
+@Composable
+private fun LockScreen(gearLabel: String, vm: StudioViewModel) {
+    Box(
+        Modifier.fillMaxSize().background(Color(0xF2101418)).semantics { contentDescription = "lock_screen" }
+            .pointerInput(Unit) { detectTapGestures { } }, // 아래 화면으로 터치가 새지 않게
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("주차 중에만 연주할 수 있어요", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("P단으로 돌아오면 만들던 루프가 그대로 있어요. 재생은 직접 다시 눌러 주세요.", fontSize = 20.sp, color = TextDim)
+            Text(gearLabel, fontSize = 18.sp, color = TextDim)
+            val forced by vm.forcedLock.collectAsStateWithLifecycle()
+            if (forced) {
+                OutlinedButton(onClick = { vm.setForcedLock(false) }, modifier = Modifier.semantics { contentDescription = "btn_unlock_debug" }) { Text("디버그: 잠금 해제") }
+            }
+        }
+    }
 }

@@ -115,6 +115,16 @@ else
   skip vc-smoke "스튜디오 화면 또는 vc.sh 없음"
 fi
 
+# ---------- 4c. 기어 잠금 회귀 (T0-7/T1-11): 재생 중 D → 소리 멈춤 → P → 데이터 그대로 / 다른 앱 전환도 같은 경로 ----------
+if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -f "$ROOT/scripts/gear_regression.sh" ] && [ -x "$ROOT/scripts/vc.sh" ]; then
+  bash "$ROOT/scripts/gear_regression.sh" "$DEV" "$OUT" >"$OUT/gear-regression.log" 2>&1
+  GR=$?
+  grep -E '^(PASS|FAIL)' "$OUT/gear-regression.log" | sed 's/^FAIL \([^ ]*\)/FAIL \1/'
+  [ $GR -eq 0 ] || FAILED=1
+else
+  skip gear-regression "스튜디오 화면 또는 스크립트 없음"
+fi
+
 # ---------- 5. 크래시 검사 ----------
 A logcat -d >"$OUT/logcat.txt" 2>&1
 if grep -E "FATAL EXCEPTION" -A3 "$OUT/logcat.txt" | grep -q "$PKG"; then fail no-fatal-exception "$OUT/logcat.txt"; else pass no-fatal-exception; fi

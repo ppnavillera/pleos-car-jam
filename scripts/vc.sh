@@ -4,6 +4,7 @@
 #   scripts/vc.sh brake 0..100
 #   scripts/vc.sh steering -540..540
 #   scripts/vc.sh turn Off|BlinkLeft|BlinkRight|FlashLeft|FlashRight
+#   scripts/vc.sh gear-timed P|R|N|D   (PUT 직전·직후의 호스트 시각(ms)과 VC 기록 시각을 출력: 지연 측정용)
 #   scripts/vc.sh state
 # 원리: 쓰기 API(PUT)는 브라우저 세션이 살아 있을 때만 열린다(emulator_inactive).
 #       페이지가 1초마다 보내는 하트비트 POST /browser/session 를 우리가 대신 보낸다.
@@ -21,6 +22,18 @@ case "${1:-state}" in
     case "$2" in P) g=Park;; R) g=Reverse;; N) g=Neutral;; D) g=Drive;; *) echo "gear P|R|N|D"; exit 2;; esac
     curl -s -m 5 -X PUT "$BASE/vehicle/gear?gear=$g" >/dev/null; sleep 0.5; beat
     state_field "print(d['gear']['actual']['value'])" ;;
+  gear-timed)
+    case "$2" in P) g=Park;; R) g=Reverse;; N) g=Neutral;; D) g=Drive;; *) echo "gear-timed P|R|N|D"; exit 2;; esac
+    python3 -I - "$BASE" "$g" <<'PY'
+import sys, time, json, urllib.request
+base, g = sys.argv[1], sys.argv[2]
+t0 = time.time()
+urllib.request.urlopen(urllib.request.Request(base + "/vehicle/gear?gear=" + g, method="PUT"), timeout=5).read()
+t1 = time.time()
+st = json.load(urllib.request.urlopen(base + "/vehicle/state", timeout=5))
+print("PUT_START_MS=%d PUT_END_MS=%d VC_STAMP_MS=%s value=%s" % (t0 * 1000, t1 * 1000, st["gear"]["actual"]["timestamp_ms"], st["gear"]["actual"]["value"]))
+PY
+    beat ;;
   brake)
     curl -s -m 5 -X PUT "$BASE/vehicle/controls?speed=0&accelerator=0&brake=$2" >/dev/null; sleep 0.3; beat
     state_field "print('brake_pct', d['controls']['brake_pct'])" ;;

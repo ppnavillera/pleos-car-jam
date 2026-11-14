@@ -106,7 +106,7 @@ class LoopEngine(
             is EngineCommand.Play -> onPlay(cmd)
             is EngineCommand.ToggleRecord -> toggleRecord(cmd.kind, now)
             EngineCommand.TogglePlay -> if (transport.running) stopTransport() else startPlayback(now)
-            EngineCommand.Stop -> if (transport.running) stopTransport()
+            EngineCommand.Stop -> if (transport.running) stopTransport() else sampler.stopAll() // 모니터링 소리도 끊는다
             EngineCommand.FinishRecord -> finishRecord()
             is EngineCommand.ClearTrack -> notes.getValue(cmd.kind).clear()
             EngineCommand.ClearAll -> notes.values.forEach { it.clear() }
