@@ -53,29 +53,117 @@ class LoopEngineTest {
         runUntil(at(47.6)); play("drum_hihat", at(47.6))
         runUntil(at(48.0) + 2 * ms)
 
-        // 자동 재생 상태로 전환, 31.6 → 스텝 0 으로 기록
+        // 2마디가 지나도 녹음은 끝나지 않는다. 앞 바퀴의 킥이 다시 울린다.
+        assertEquals(TrackStatus.RECORDING, kind(TrackKind.DRUM).status)
+        assertEquals(2, sampler.count("drum_kick")) // 모니터링 1 + 앞 바퀴 노트 재생 1
+        assertEquals(1, sampler.count("drum_hihat")) // 방금 친 하이햇(→스텝 0)은 같은 스텝에서 또 울리지 않는다
+
+        // 녹음 버튼을 다시 누르면 끝나고 재생이 이어진다. 31.6 → 스텝 0 으로 기록
+        engine.send(EngineCommand.ToggleRecord(TrackKind.DRUM))
+        runUntil(at(48.0) + 4 * ms)
         val st = kind(TrackKind.DRUM)
         assertEquals(TrackStatus.PLAYING, st.status)
         assertEquals(listOf(0 to "drum_kick", 0 to "drum_hihat", 8 to "drum_snare"), st.notes.map { it.step to it.sampleId }.sortedBy { it.first })
         assertEquals(true, engine.state.value.playing)
 
-        // 스텝 48(= 루프 위치 0)에서 킥이 자동 재생돼 이미 2회(모니터링 1 + 재생 1). 스텝 56에서 스네어 재생
-        assertEquals(2, sampler.count("drum_kick"))
         runUntil(at(56.0) + 5 * ms)
-        assertEquals(2, sampler.count("drum_kick"))
         assertEquals(2, sampler.count("drum_snare")) // 모니터링 1 + 재생 1
-        // 다음 루프(80)에서도 반복
-        runUntil(at(80.0) + 5 * ms)
+        runUntil(at(80.0) + 5 * ms) // 다음 루프에서도 반복
         assertEquals(3, sampler.count("drum_kick"))
     }
 
-    @Test fun recordingTrackIsNotDoubleTriggered() {
+    @Test fun recordingContinuesPastTwoBarsUntilButtonPressed() {
+        startRecordDrum()
+        runUntil(at(16.0) + 2 * ms)
+        runUntil(at(16.0 + 32 * 3 + 5)) // 3바퀴 넘게
+        assertEquals(TrackStatus.RECORDING, kind(TrackKind.DRUM).status)
+        assertEquals(TrackKind.DRUM, engine.state.value.recordingKind)
+        engine.send(EngineCommand.ToggleRecord(TrackKind.DRUM))
+        runUntil(now + 2 * ms)
+        assertEquals(null, engine.state.value.recordingKind)
+        assertEquals(true, engine.state.value.playing)
+    }
+
+    @Test fun overdubStacksOnPreviousLapNotesAndPlaysThemBack() {
+        startRecordDrum()
+        runUntil(at(16.0) + 2 * ms)
+        play("drum_kick", at(16.0)) // 1바퀴째 위치 0
+        runUntil(at(40.0)); play("drum_snare", at(40.0)) // 1바퀴째 위치 24
+        runUntil(at(48.0) + 2 * ms) // 2바퀴 시작: 킥 재생
+        assertEquals(2, sampler.count("drum_kick"))
+        runUntil(at(52.0)); play("drum_hihat", at(52.0)) // 2바퀴째 위치 4 → 앞 바퀴 노트 위에 쌓임
+        runUntil(at(80.0) + 2 * ms) // 3바퀴 시작 (루프 위치 0 = 스텝 16, 48, 80)
+        assertEquals(3, sampler.count("drum_kick"))
+        assertEquals(2, sampler.count("drum_snare")) // 모니터링 1 + 2바퀴째 위치 24에서 재생 1
+        assertEquals(setOf(0 to "drum_kick", 24 to "drum_snare", 4 to "drum_hihat"),
+            kind(TrackKind.DRUM).notes.map { it.step to it.sampleId }.toSet())
+    }
+
+    @Test fun existingContentClearedOnceAtRecordStartThenOnlyStacks() {
+        engine.send(EngineCommand.LoadSong(Song("x", "x", 0, tracks = listOf(
+            Track(TrackKind.DRUM, listOf(Note(2, "drum_snare"))), Track(TrackKind.BASS), Track(TrackKind.MELODY), Track(TrackKind.FX)))))
+        engine.tick(now)
+        startRecordDrum()
+        runUntil(at(16.0) + 2 * ms)
+        assertEquals(0, kind(TrackKind.DRUM).notes.size) // 시작 순간 한 번 지움
+        runUntil(at(20.0)); play("drum_kick", at(20.0))
+        runUntil(at(48.0) + 2 * ms) // 바퀴가 돌아도 다시 지우지 않는다
+        runUntil(at(52.0)); play("drum_hihat", at(52.0))
+        runUntil(at(80.0) + 2 * ms)
+        assertEquals(2, kind(TrackKind.DRUM).notes.size)
+    }
+
+    @Test fun metronomeEveryBeatWhileRecordingAccentOnBarStartAndNeverRecorded() {
+        startRecordDrum()
+        runUntil(at(16.0) + 2 * ms)
+        val before = sampler.hits.size
+        runUntil(at(48.0) - ms) // 녹음 2마디: 박 8개 (위치 0,4,...,28)
+        val metro = sampler.hits.drop(before).map { it.id }.filter { it.startsWith("metro") }
+        assertEquals(listOf("metro_lo", "metro_lo", "metro_lo", "metro_hi", "metro_lo", "metro_lo", "metro_lo"), metro) // 위치 4..28
+        runUntil(at(48.0) + 2 * ms)
+        assertEquals("metro_hi", sampler.hits.last { it.id.startsWith("metro") }.id) // 3바퀴째 머리 박
+        assertEquals(0, kind(TrackKind.DRUM).notes.size) // 메트로놈은 트랙에 안 남는다
+
+        engine.send(EngineCommand.ToggleRecord(TrackKind.DRUM))
+        runUntil(now + 2 * ms)
+        val atEnd = sampler.count("metro_lo") + sampler.count("metro_hi")
+        runUntil(at(80.0))
+        assertEquals(atEnd, sampler.count("metro_lo") + sampler.count("metro_hi")) // 녹음이 끝나면 꺼진다
+    }
+
+    @Test fun recordingTrackIsNotDoubleTriggeredInSameLap() {
         startRecordDrum()
         runUntil(at(16.0) + ms)
-        // 5.6스텝 지점(=루프 21.6)에 입력 → 스텝 6으로 기록되지만 같은 녹음 구간 안에서 다시 울리면 안 됨
+        // 21.6스텝(루프 5.6)에 입력 → 스텝 22(위치 6)로 기록. 같은 바퀴에서 22에 또 울리면 안 된다.
         runUntil(at(21.6)); play("drum_kick", at(21.6))
         runUntil(at(30.0))
         assertEquals(1, sampler.count("drum_kick"))
+        // 다음 바퀴(54)에서는 앞 바퀴 노트로 다시 울린다
+        runUntil(at(54.0) + 3 * ms)
+        assertEquals(2, sampler.count("drum_kick"))
+    }
+
+    @Test fun inputQuantizedBackwardPlaysInNextLap() {
+        startRecordDrum()
+        runUntil(at(16.0) + ms)
+        runUntil(at(22.4)); play("drum_kick", at(22.4)) // 22로 반올림, 이미 지나간 스텝
+        runUntil(at(30.0))
+        assertEquals(1, sampler.count("drum_kick"))
+        runUntil(at(54.0) + 3 * ms)
+        assertEquals(2, sampler.count("drum_kick"))
+    }
+
+    @Test fun lapNotesQuantizeCorrectlyAcrossTempoChange() {
+        startRecordDrum()
+        runUntil(at(16.0) + ms)
+        runUntil(at(20.5))
+        engine.send(EngineCommand.SetBpm(140)) // 다음 스텝(21)부터 새 길이
+        val newStep = stepNanosForBpm(140)
+        val ts = at(21.0) + 3 * newStep // 스텝 24
+        runUntil(ts + 5 * ms)
+        play("drum_kick", ts)
+        runUntil(ts + 10 * ms)
+        assertEquals(listOf(8), kind(TrackKind.DRUM).notes.map { it.step }) // 24 - 16
     }
 
     @Test fun overwriteClearsOnlyWhenRecordingStarts() {
@@ -189,6 +277,50 @@ class LoopEngineTest {
         assertEquals(TrackStatus.ARMED, kind(TrackKind.BASS).status) // 스텝 32에서 시작하지 않고 64로 미룸
         runUntil(at(64.0) + 2 * ms)
         assertEquals(TrackStatus.RECORDING, kind(TrackKind.BASS).status)
+    }
+
+    @Test fun finishRecordKeepsContentAndKeepsPlaying() {
+        startRecordDrum()
+        runUntil(at(16.0) + ms)
+        runUntil(at(20.0)); play("drum_kick", at(20.0))
+        runUntil(at(60.0))
+        engine.send(EngineCommand.FinishRecord)
+        runUntil(at(60.0) + 2 * ms)
+        assertEquals(null, engine.state.value.recordingKind)
+        assertEquals(true, engine.state.value.playing)
+        assertEquals(TrackStatus.PLAYING, kind(TrackKind.DRUM).status)
+        assertEquals(1, kind(TrackKind.DRUM).notes.size)
+    }
+
+    @Test fun finishRecordDuringCountInCancelsAndStopsTransport() {
+        startRecordDrum()
+        runUntil(at(5.0))
+        engine.send(EngineCommand.FinishRecord)
+        runUntil(at(5.0) + 2 * ms)
+        assertEquals(false, engine.state.value.playing)
+        assertEquals(null, engine.state.value.recordingKind)
+        assertEquals(TrackStatus.EMPTY, kind(TrackKind.DRUM).status)
+    }
+
+    @Test fun finishRecordWhenIdleDoesNothing() {
+        engine.send(EngineCommand.FinishRecord); engine.tick(now)
+        assertEquals(false, engine.state.value.playing)
+    }
+
+    @Test fun stoppingTransportEndsRecordingAndKeepsNotes() {
+        startRecordDrum()
+        runUntil(at(16.0) + ms)
+        runUntil(at(20.0)); play("drum_kick", at(20.0))
+        runUntil(at(60.0))
+        engine.send(EngineCommand.Stop)
+        runUntil(at(60.0) + 2 * ms)
+        assertEquals(null, engine.state.value.recordingKind)
+        assertEquals(false, engine.state.value.playing)
+        assertEquals(1, kind(TrackKind.DRUM).notes.size)
+        // 다시 재생하면 녹음 상태가 아니라 재생만 한다
+        engine.send(EngineCommand.TogglePlay)
+        runUntil(now + 2 * ms)
+        assertEquals(null, engine.state.value.recordingKind)
     }
 
     @Test fun clearTrackAndClearAll() {

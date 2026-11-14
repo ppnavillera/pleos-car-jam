@@ -13,10 +13,12 @@ object Quantizer {
         stepNanos: Long,
         latencyNanos: Long = 0L,
         steps: Int = STEPS_PER_LOOP,
-    ): Int {
+    ): Int = Math.floorMod(roundedSteps(inputNanos, loopStartNanos, stepNanos, latencyNanos), steps.toLong()).toInt()
+
+    /** 기준 시각으로부터 몇 스텝째인지(감기지 않은 정수, 음수 가능). 녹음이 여러 바퀴 이어질 때 쓴다. */
+    fun roundedSteps(inputNanos: Long, referenceNanos: Long, stepNanos: Long, latencyNanos: Long = 0L): Long {
         require(stepNanos > 0) { "stepNanos must be > 0" }
-        val delta = inputNanos - latencyNanos - loopStartNanos
-        val rounded = Math.floorDiv(2 * delta + stepNanos, 2 * stepNanos)
-        return Math.floorMod(rounded, steps.toLong()).toInt()
+        val delta = inputNanos - latencyNanos - referenceNanos
+        return Math.floorDiv(2 * delta + stepNanos, 2 * stepNanos)
     }
 }

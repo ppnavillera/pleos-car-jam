@@ -8,8 +8,13 @@ import java.util.concurrent.ConcurrentLinkedQueue
 sealed interface EngineCommand {
     /** 연주 입력. 즉시 소리(모니터링)를 내고, 녹음 중이면 timestamp를 퀀타이즈해 기록한다. */
     data class Play(val sampleId: String, val timestampNanos: Long, val velocity: Float = 1f) : EngineCommand
-    /** 녹음 버튼. 같은 트랙이 녹음/대기 중이면 취소·확정, 아니면 그 트랙에 녹음을 건다. */
+    /**
+     * 녹음 버튼. 같은 트랙이 녹음 중이면 끝내고(내용 유지), 대기 중이면 취소, 아니면 그 트랙에 녹음을 건다.
+     * 녹음은 이 버튼을 다시 누르거나 FinishRecord/Stop이 올 때까지 계속된다 (PLAN_CHANGES 2026-11-15).
+     */
     data class ToggleRecord(val kind: TrackKind) : EngineCommand
+    /** 녹음 중이면 끝내고 내용을 유지, 대기 중이면 취소. 트랙 선택 변경이나 기어 이탈 때 쓴다. 재생은 그대로 둔다. */
+    data object FinishRecord : EngineCommand
     data object TogglePlay : EngineCommand
     data object Stop : EngineCommand
     data class ClearTrack(val kind: TrackKind) : EngineCommand
@@ -51,7 +56,8 @@ class LoopEngine(
         class Armed(val kind: TrackKind, val startStep: Long, val startedTransport: Boolean) : Phase {
             val early = ArrayList<Note>()
         }
-        class Recording(val kind: TrackKind, val startStep: Long, val endStep: Long, val loopStartNanos: Long) : Phase
+        /** 끝은 없다. 녹음 버튼/FinishRecord/Stop으로만 끝난다. */
+        class Recording(val kind: TrackKind, val startStep: Long) : Phase
     }
 
     private val queue = ConcurrentLinkedQueue<EngineCommand>()
@@ -70,6 +76,8 @@ class LoopEngine(
     private var lastLoopPos = -1
     private var countInBeat = 0
     private var loopCount = 0L
+    /** 모니터링으로 이미 울린 입력이 아직 안 온 스텝으로 퀀타이즈된 경우, 그 스텝에서 같은 노트를 한 번 건너뛴다. */
+    private val skipOnce = HashSet<Pair<Long, String>>()
 
     private val _state = MutableStateFlow(EngineState())
     val state: StateFlow<EngineState> = _state
@@ -99,6 +107,7 @@ class LoopEngine(
             is EngineCommand.ToggleRecord -> toggleRecord(cmd.kind, now)
             EngineCommand.TogglePlay -> if (transport.running) stopTransport() else startPlayback(now)
             EngineCommand.Stop -> if (transport.running) stopTransport()
+            EngineCommand.FinishRecord -> finishRecord()
             is EngineCommand.ClearTrack -> notes.getValue(cmd.kind).clear()
             EngineCommand.ClearAll -> notes.values.forEach { it.clear() }
             is EngineCommand.SetMuted -> mutedRequested[cmd.kind] = cmd.muted
@@ -129,8 +138,10 @@ class LoopEngine(
     }
 
     private fun stopTransport() {
+        if (phase is Phase.Recording) endRecording("stop") // 그때까지 찍힌 내용 유지
         transport.stop()
-        phase = Phase.Idle // 녹음 중이면 그때까지 찍힌 내용 유지, 대기 중이면 취소
+        phase = Phase.Idle // 대기 중이면 취소
+        skipOnce.clear()
         sampler.stopAll()
         lastLoopPos = -1
         countInBeat = 0
@@ -143,10 +154,14 @@ class LoopEngine(
         val half = transport.stepNanos / 2
         when (ph) {
             is Phase.Recording -> {
-                val endTime = transport.timeOfStep(ph.endStep)
-                if (cmd.timestampNanos >= ph.loopStartNanos - half && cmd.timestampNanos < endTime) {
-                    val step = Quantizer.quantize(cmd.timestampNanos, ph.loopStartNanos, transport.stepNanos, latencyNanos)
-                    addNote(ph.kind, Note(step, cmd.sampleId, cmd.velocity))
+                // 녹음은 여러 바퀴 이어지므로 루프 시작이 아니라 아직 안 울린 다음 스텝을 기준으로 절대 스텝을 구하고,
+                // 그것을 루프 위치(0..31)로 감는다. 템포가 바뀌어도 기준이 같이 따라간다.
+                val next = transport.nextStep
+                val abs = next + Quantizer.roundedSteps(cmd.timestampNanos, transport.timeOfStep(next), transport.stepNanos, latencyNanos)
+                if (abs >= ph.startStep) {
+                    val pos = Math.floorMod(abs - origin, STEPS_PER_LOOP.toLong()).toInt()
+                    addNote(ph.kind, Note(pos, cmd.sampleId, cmd.velocity))
+                    if (abs >= next) skipOnce += abs to cmd.sampleId // 이미 모니터링으로 울렸다
                 }
             }
             is Phase.Armed -> {
@@ -167,14 +182,15 @@ class LoopEngine(
     private fun toggleRecord(kind: TrackKind, now: Long) {
         val ph = phase
         // 같은 트랙을 다시 누름: 녹음 중이면 확정, 대기 중이면 취소
-        if (ph is Phase.Recording && ph.kind == kind) { phase = Phase.Idle; log("REC finish(manual) $kind"); return }
+        if (ph is Phase.Recording && ph.kind == kind) { endRecording("manual"); return }
         if (ph is Phase.Armed && ph.kind == kind) {
             phase = Phase.Idle
             if (ph.startedTransport) stopTransport()
             log("REC cancel $kind")
             return
         }
-        // 다른 트랙: 현재 녹음은 확정/취소하고 새로 건다
+        // 다른 트랙: 현재 녹음은 끝내고(내용 유지)/대기는 취소하고 새로 건다
+        if (ph is Phase.Recording) endRecording("switch")
         if (ph is Phase.Armed && ph.startedTransport) { transport.stop(); sampler.stopAll() }
         phase = Phase.Idle
 
@@ -193,6 +209,24 @@ class LoopEngine(
         log("REC armed $kind start=${(phase as Phase.Armed).startStep}")
     }
 
+    private fun finishRecord() {
+        when (val ph = phase) {
+            is Phase.Recording -> endRecording("finish")
+            is Phase.Armed -> {
+                phase = Phase.Idle
+                if (ph.startedTransport) stopTransport()
+                log("REC cancel ${ph.kind}")
+            }
+            Phase.Idle -> Unit
+        }
+    }
+
+    private fun endRecording(reason: String) {
+        val ph = phase as? Phase.Recording ?: return
+        phase = Phase.Idle
+        log("REC end ${ph.kind} notes=${notes.getValue(ph.kind).size} ($reason)")
+    }
+
     // ---------------------------------------------------------------- 스텝
 
     private fun onStep(n: Long, scheduledNanos: Long) {
@@ -204,16 +238,14 @@ class LoopEngine(
             val list = notes.getValue(ph.kind)
             list.clear() // 덮어쓰기: 녹음이 시작되는 순간 기존 노트를 지운다
             for (e in ph.early) addNote(ph.kind, e)
-            phase = Phase.Recording(ph.kind, n, n + STEPS_PER_LOOP, scheduledNanos)
+            phase = Phase.Recording(ph.kind, n)
             countInBeat = 0
             log("REC start ${ph.kind} step=$n")
-        } else if (ph is Phase.Recording && n == ph.endStep) {
-            phase = Phase.Idle
-            log("REC end ${ph.kind} notes=${notes.getValue(ph.kind).size}")
         }
 
         val cur = phase
-        // 메트로놈: 녹음 시작 직전 1마디
+        val pos = Math.floorMod(n - origin, STEPS_PER_LOOP.toLong()).toInt()
+        // 메트로놈: 녹음 시작 직전 1마디(카운트인)와 녹음 중 매 박. 첫 박(마디 머리)은 강세. 트랙에는 기록하지 않는다.
         if (cur is Phase.Armed) {
             val rel = n - (cur.startStep - STEPS_PER_BAR)
             if (rel in 0 until STEPS_PER_BAR && rel % 4 == 0L) {
@@ -221,16 +253,22 @@ class LoopEngine(
                 countInBeat = beat
                 sampler.play(if (beat == 1) "metro_hi" else "metro_lo")
             }
+        } else if (cur is Phase.Recording && pos % 4 == 0) {
+            sampler.play(if (pos % STEPS_PER_BAR == 0) "metro_hi" else "metro_lo")
         }
 
-        val pos = Math.floorMod(n - origin, STEPS_PER_LOOP.toLong()).toInt()
         lastLoopPos = pos
         if (pos == 0) { loopCount++; log("LOOP wrap n=$n") }
+        // 녹음 중인 트랙도 앞 바퀴에 친 노트가 재생된다.
         for (k in TrackKind.entries) {
             if (mutedApplied.getValue(k)) continue
-            if (cur is Phase.Recording && cur.kind == k) continue // 녹음 중인 트랙은 모니터링만(이중 발음 방지)
-            for (note in notes.getValue(k)) if (note.step == pos) sampler.play(note.sampleId, note.velocity)
+            for (note in notes.getValue(k)) {
+                if (note.step != pos) continue
+                if (skipOnce.remove(n to note.sampleId)) continue // 방금 모니터링으로 울린 입력
+                sampler.play(note.sampleId, note.velocity)
+            }
         }
+        skipOnce.removeAll { it.first <= n }
     }
 
     // ---------------------------------------------------------------- 스냅샷

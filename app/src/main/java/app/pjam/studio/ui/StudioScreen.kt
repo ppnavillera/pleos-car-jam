@@ -122,7 +122,7 @@ private fun TopBar(st: EngineState, sel: TrackKind, vm: StudioViewModel) {
             onClick = { vm.toggleRecord() },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
             modifier = Modifier.height(64.dp).semantics { contentDescription = "btn_record" },
-        ) { Text(if (recActive) "■ 녹음 취소/완료" else "● 녹음 ${Labels.track(sel)}", fontSize = 22.sp) }
+        ) { Text(if (recActive) "■ 녹음 종료" else "● 녹음 ${Labels.track(sel)}", fontSize = 22.sp) }
         OutlinedButton(onClick = { vm.clearAll() }, modifier = Modifier.height(64.dp).semantics { contentDescription = "btn_clear_all" }) { Text("전체 지우기", fontSize = 18.sp) }
     }
 }

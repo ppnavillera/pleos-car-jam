@@ -45,7 +45,11 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
         _inputBar.value = InputBarState(text, ++seq)
     }
 
-    fun select(k: TrackKind) { _selected.value = k }
+    /** 녹음 중에 다른 트랙을 고르면 현재 녹음을 끝내고(내용 유지) 선택만 바꾼다. */
+    fun select(k: TrackKind) {
+        if (k != _selected.value) c.engine.send(EngineCommand.FinishRecord)
+        _selected.value = k
+    }
 
     /** 화면 패드: 누르는 순간(pointer-down)의 시각을 stamp해서 들어온다. */
     fun onPad(sampleId: String, timestampNanos: Long) {

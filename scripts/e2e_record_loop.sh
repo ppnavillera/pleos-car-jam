@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 엔드투엔드: 화면 패드로 DRUM 녹음 → 2마디 뒤 자동 반복되는지 확인한다. (계획서 4.1 P6)
-# usage: e2e_record_loop.sh <adb 시리얼> <출력 폴더>
-# 100 BPM 기준: 카운트인 2.4s → 녹음 4.8s → 이후 4.8s마다 루프 반복
+# 엔드투엔드: 화면 패드로 DRUM 녹음 → 루프가 도는 동안 계속 쌓기 → 녹음 버튼으로 종료 → 자동 반복 확인.
+# 녹음은 버튼을 다시 누를 때까지 이어진다 (PLAN_CHANGES 2026-11-15). usage: e2e_record_loop.sh <adb 시리얼> <출력 폴더>
+# 100 BPM 기준: 카운트인 2.4s → 녹음 시작(T0+2.4s), 루프 한 바퀴 4.8s
 set -eu
 DEV="$1"; OUT="$2"; PKG="app.pjam.studio"
 A() { adb -s "$DEV" "$@"; }
@@ -33,18 +33,27 @@ read -r CX CY < <(center "$OUT/e2e-0-idle.xml" btn_clear_all) || { echo "btn_cle
 A shell input tap "$CX" "$CY"; sleep 0.5
 A logcat -c
 
-# 녹음 시작(T0) → 카운트인 중에는 치지 않고, 녹음 구간(T0+2.4s~7.2s)에 킥·스네어·하이햇
+# 녹음 시작(T0) → 카운트인(2.4s) 뒤 1바퀴째(2.4~7.2s)에 킥·스네어·하이햇, 2바퀴째(7.2~12s)에 클랩을 쌓고 녹음 버튼으로 종료
 A shell "input tap $RX $RY; sleep 2.9; input tap $KX $KY; sleep 0.9; input tap $SX $SY; sleep 0.9; input tap $HX $HY"
-sleep 4.0   # T0 ≈ 8.7s: 녹음 끝(7.2s) 지나 PLAYING
-sleep 4.5   # 한 루프 더 (T0+12s의 wrap까지)
+# 지금 T0 ≈ 5.5s(+탭 지연). 2바퀴째에서 클랩
+read -r LX LY < <(center "$OUT/e2e-0-idle.xml" pad_drum_clap) || { echo "pad_drum_clap 없음"; exit 1; }
+sleep 3.2
+A shell input tap "$LX" "$LY"
+sleep 1.5
+# 녹음이 자동으로 끝나지 않고 2바퀴째에도 이어지는지: 종료 전에는 REC end 가 없어야 한다
+A logcat -d -s PJAM_ENG:I >"$OUT/e2e-engine-mid.log"
+grep -q "REC end DRUM" "$OUT/e2e-engine-mid.log" && { echo "녹음 버튼을 누르기 전에 녹음이 끝났다(2마디 자동 종료가 남아 있음)"; exit 1; }
+A shell input tap "$RX" "$RY"   # 녹음 종료
+sleep 5.5                        # 한 바퀴 이상 자동 재생
 A logcat -d -s PJAM_ENG:I >"$OUT/e2e-engine.log"
 
 grep -q "REC start DRUM" "$OUT/e2e-engine.log" || { echo "녹음 시작 로그 없음"; exit 1; }
 NOTES=$(grep -o "REC end DRUM notes=[0-9]*" "$OUT/e2e-engine.log" | head -1 | sed 's/.*=//')
-[ -n "${NOTES:-}" ] && [ "$NOTES" -ge 2 ] || { echo "녹음 끝 로그 없음 또는 노트 <2 (notes=${NOTES:-none})"; exit 1; }
-# 녹음이 끝난 뒤(절대 스텝 ≥48) 루프 wrap 이 2번 이상 = 자동 반복
+# 킥·스네어·하이햇(1바퀴째) + 클랩(2바퀴째 쌓기) = 4. 앞 바퀴 노트가 지워지지 않았다는 뜻
+[ -n "${NOTES:-}" ] && [ "$NOTES" -ge 4 ] || { echo "녹음 끝 로그 없음 또는 노트 <4 (notes=${NOTES:-none})"; exit 1; }
+# 녹음 중 루프 wrap(절대 스텝 ≥48)이 1번 이상 있었고, 끝난 뒤에도 재생이 계속돼 wrap 이 더 있었는지
 WRAPS=$(grep -o "LOOP wrap n=[0-9]*" "$OUT/e2e-engine.log" | sed 's/.*=//' | awk '$1>=48' | wc -l | tr -d ' ')
-[ "$WRAPS" -ge 2 ] || { echo "자동 반복 wrap 부족: $WRAPS"; exit 1; }
+[ "$WRAPS" -ge 2 ] || { echo "루프 반복 wrap 부족: $WRAPS"; exit 1; }
 
 # ---- P8: DRUM 이 반복되는 중에 BASS 를 녹음해도 DRUM 이 유지되는지 ----
 read -r BX BY < <(center "$OUT/e2e-0-idle.xml" track_card_BASS) || { echo "track_card_BASS 없음"; exit 1; }
@@ -67,11 +76,12 @@ A shell input tap "$RX" "$RY"
 for i in $(seq 1 80); do A logcat -d -s PJAM_ENG:I | grep -q "REC start BASS" && break; sleep 0.3; done
 A logcat -d -s PJAM_ENG:I | grep -q "REC start BASS" || { echo "BASS 녹음이 시작되지 않음"; exit 1; }
 A shell "input tap $P1X $KY; sleep 0.8; input tap $P2X $KY; sleep 0.8; input tap $P3X $KY"
-for i in $(seq 1 60); do A logcat -d -s PJAM_ENG:I | grep -q "REC end BASS" && break; sleep 0.3; done
+sleep 0.5
+A shell input tap "$RX" "$RY"   # BASS 녹음 종료 (자동으로 끝나지 않는다)
+for i in $(seq 1 30); do A logcat -d -s PJAM_ENG:I | grep -q "REC end BASS" && break; sleep 0.3; done
 A logcat -d -s PJAM_ENG:I >"$OUT/e2e-engine2.log"
 BNOTES=$(grep -o "REC end BASS notes=[0-9]*" "$OUT/e2e-engine2.log" | head -1 | sed 's/.*=//')
 [ -n "${BNOTES:-}" ] && [ "$BNOTES" -ge 2 ] || { echo "BASS 녹음 끝 로그 없음 또는 노트 <2 (notes=${BNOTES:-none})"; exit 1; }
-# 녹음 도중에도 루프(=DRUM 재생)가 끊기지 않았는지: BASS 녹음 시작~끝 사이 wrap 로그가 있어야 한다
 A shell input tap "$PX" "$PY"; sleep 1   # 정지 (재생 중에는 uiautomator idle 대기가 실패할 수 있음)
 
 # 화면: 정지 후 격자와 상태 확인
