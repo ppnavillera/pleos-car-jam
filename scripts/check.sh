@@ -95,6 +95,26 @@ else
   skip e2e-record-loop "스튜디오 화면 또는 e2e 스크립트 없음"
 fi
 
+# ---------- 4b. 차량 입력 스모크 (T0-0 + P7): Virtual Console → SDK → 앱 ----------
+if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -x "$ROOT/scripts/vc.sh" ]; then
+  A shell am force-stop "$PKG" >/dev/null 2>&1; A logcat -c
+  A shell am start -W -n "$ACT" >/dev/null 2>&1; sleep 4
+  if A logcat -d -s PJAM_PLEOS:I | grep -q "capability BRAKE accessType=READ"; then pass sdk-brake-capability; else fail sdk-brake-capability "PJAM_PLEOS 로그 없음(SDK 연결 실패?)"; fi
+  bash "$ROOT/scripts/vc.sh" brake 100 >/dev/null 2>&1; sleep 1
+  dump_with_retry "$OUT/ui-brake.xml"
+  if A logcat -d -s PJAM_SIG:I | grep -q "item=BRAKE value=true src=listener"; then pass vc-brake-reaches-sdk; else fail vc-brake-reaches-sdk "$OUT/logcat.txt"; fi
+  if grep -q 'text="브레이크 → 킥"' "$OUT/ui-brake.xml"; then pass vc-brake-input-bar; else fail vc-brake-input-bar "$OUT/ui-brake.xml"; fi
+  bash "$ROOT/scripts/vc.sh" brake 0 >/dev/null 2>&1
+  bash "$ROOT/scripts/vc.sh" turn BlinkLeft >/dev/null 2>&1; sleep 1
+  # 방향지시등이 깜빡이는 동안은 uiautomator 덤프가 비는 일이 있어 logcat 으로 확인한다
+  if A logcat -d -s PJAM_SIG:I | grep -q "item=TURN_SIGNAL value=LEFT src=listener"; then pass vc-turn-reaches-sdk; else fail vc-turn-reaches-sdk "PJAM_SIG 에 TURN_SIGNAL LEFT 없음"; fi
+  if A logcat -d -s PJAM_INPUT:I | grep -q "방향지시등 좌 → 스네어"; then pass vc-turn-left-input-bar; else fail vc-turn-left-input-bar "PJAM_INPUT 로그 없음"; fi
+  bash "$ROOT/scripts/vc.sh" turn FlashRight >/dev/null 2>&1; sleep 1.5; bash "$ROOT/scripts/vc.sh" turn Off >/dev/null 2>&1; sleep 0.5
+  if A logcat -d -s PJAM_INPUT:I | grep -q "방향지시등 우 → 하이햇"; then pass vc-turn-right-flash; else fail vc-turn-right-flash "PJAM_INPUT 로그 없음"; fi
+else
+  skip vc-smoke "스튜디오 화면 또는 vc.sh 없음"
+fi
+
 # ---------- 5. 크래시 검사 ----------
 A logcat -d >"$OUT/logcat.txt" 2>&1
 if grep -E "FATAL EXCEPTION" -A3 "$OUT/logcat.txt" | grep -q "$PKG"; then fail no-fatal-exception "$OUT/logcat.txt"; else pass no-fatal-exception; fi

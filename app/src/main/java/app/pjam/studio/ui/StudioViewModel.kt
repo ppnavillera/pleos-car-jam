@@ -40,7 +40,10 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
-    private fun show(text: String) { _inputBar.value = InputBarState(text, ++seq) }
+    private fun show(text: String) {
+        android.util.Log.i("PJAM_INPUT", text)
+        _inputBar.value = InputBarState(text, ++seq)
+    }
 
     fun select(k: TrackKind) { _selected.value = k }
 

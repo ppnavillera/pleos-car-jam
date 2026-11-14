@@ -10,13 +10,31 @@
 - Virtual Console 버전: 미확인 (`ai.pleos.connectwebconsole` 패키지 존재. dumpsys versionName=14는 플랫폼 값으로 보이며 의미 불확실)
 
 ## V1 시그니처
-(P7에서 브레이크·방향지시등부터 채운다. 미착수)
+Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + 컴파일·실행으로 검증. 패키지 접두 `ai.pleos.playground.vehicle`. 모든 메서드는 비-suspend, 결과는 람다(`onComplete`/`onFailed`)로 온다. **Brake, TurnSignal만 확인(P7). 나머지 도메인은 M0(T0-5).**
 
 | 도메인.메서드 | 파라미터 | 콜백·리스너 타입 | 값 타입·단위·enum | area 필요 | @RequiresPermission |
 |---|---|---|---|---|---|
+| Brake.checkBrakePedalStatusCapabilities | onComplete:(CapabilityConfig)->Unit, onFailed:(Exception)->Unit | 람다 | `api.model.capability.CapabilityConfig`: `accessType: AccessType(NONE/READ/WRITE/READ_WRITE)`만. min/max·areaBounds 없음 | 없음 | `pleos.car.permission.CAR_DRIVE` |
+| Brake.getCurrentBrakePedalStatus | onComplete:(Boolean?)->Unit, onFailed | 람다 | **Boolean?** (눌림 true). 0–100% 수치가 아님 | 없음 | CAR_DRIVE |
+| Brake.registerBrakePedalStatus / unregister… | listener: `listener.BrakePedalStatusListener` | `onBrakePedalStatusUpdated(status: Boolean?)` + `VehicleListener.onFailed(Exception)` | Boolean? | 없음 | CAR_DRIVE |
+| TurnSignal.checkTurnSignalStateCapabilities | 위와 같음 | 람다 | CapabilityConfig(accessType) | 없음 | `pleos.car.permission.CAR_LIGHTS` |
+| TurnSignal.getCurrentTurnSignalState | onComplete:(TurnSignalValue?)->Unit, onFailed | 람다 | `constant.area.TurnSignalValue`: **OFF(0), RIGHT(1), LEFT(2)**. Blink/Flash 구분 없음 | 없음 | CAR_LIGHTS |
+| TurnSignal.registerTurnSignalState / unregister… | listener: `listener.TurnSignalStateListener` | `onTurnSignalStateUpdated(state: TurnSignalValue?)` + onFailed | enum | 없음 | CAR_LIGHTS |
+| Vehicle | 생성자 `Vehicle(Context)`, `initialize()`, `release()` (반환·콜백 없음) | — | 접근자는 **`getBrake()` / `getTurnSignal()` 메서드 호출**로만 된다 (`vehicle.brake` 프로퍼티 구문은 컴파일 오류: private) | — | — |
+
+- AAR 매니페스트: `uses-permission ai.pleos.playground.service.vehicle.VEHICLE_BINDING`, `<queries>` 액션 `ai.pleos.playground.vehicle.VEHICLE_START`, 서비스 최소 버전 2.3.13. 앱은 `pleos.car.permission.CAR_DRIVE`, `CAR_LIGHTS`를 선언했고 설치·호출이 모두 성공했다.
+- `initialize()` 완료 콜백은 공개 API에 없다. 바로 `check…Capabilities`를 불러도 첫 시도에 성공했다(재시도 로직 `retryLater`는 안전장치로 둠, 한 번도 발동하지 않음).
+- **콜백 스레드: Binder 스레드로 확인** (`binder:<pid>_N`, 메인 아님). 콜백마다 다른 Binder 스레드일 수 있다 → 시각만 찍고 mapper(동기화) → tryEmit.
+- 구독 직후 현재 값이 콜백으로 한 번 더 들어온다(초기 `get`과 listener 둘 다 `value=false`) → InputMapper의 "첫 값은 기준값" 규칙으로 걸러진다.
+
+**실측 (에뮬레이터 Pleos_Connect_v2.1.0, 2026-11-15, `scripts/vc.sh`로 조작):**
+- Brake: capability `READ`. Virtual Console 카드는 0–100%이지만 SDK에는 Boolean으로만 온다: brake=100 → `true`, brake=0 → `false`. (5%/2% 임계값 로직은 SDK에서는 true/false를 100/0으로 바꿔 통과시킨다.)
+- TurnSignal: capability `READ`. BlinkLeft → `LEFT`, FlashRight → `RIGHT`, Off → `OFF`. 깜빡임 중 반복 콜백은 10초 유지 측정은 안 함(V5 미완).
+- 입력 표시줄: "브레이크 → 킥", "방향지시등 좌 → 스네어", "방향지시등 우 → 하이햇" 확인(check.sh: `vc-brake-input-bar`, `vc-turn-*`).
+- 문서와 다른 점: CLAUDE.md/계획서의 "브레이크는 0–100% 값" 전제는 Virtual Console 카드에만 해당한다. SDK 값은 Boolean.
 
 ## V2 에뮬레이터 지원
-미착수 (M0)
+M0에서 14개 항목 전체를 확인한다. 지금까지: 브레이크 지원(READ, 조작 → 콜백 확인), 방향지시등 지원(READ, 조작 → 콜백 확인). 나머지는 미확인.
 
 ## T0-0 에이전트가 Virtual Console을 직접 조작하는 방법 (2026-11-15, 성공)
 - ① 브라우저 자동화는 시도하지 않았다(② 가 먼저 됨). ③ `adb shell cmd car_service inject-vhal-event`는 **실패**: `SecurityException: requires non-user build`.

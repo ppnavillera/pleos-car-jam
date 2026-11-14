@@ -10,6 +10,7 @@ import app.pjam.studio.engine.EngineRunner
 import app.pjam.studio.engine.LoopEngine
 import app.pjam.studio.input.FakeVehicleInputSource
 import app.pjam.studio.input.VehicleInputSource
+import app.pjam.studio.input.pleos.PleosVehicleInputSource
 import app.pjam.studio.sound.AudioFocusController
 import app.pjam.studio.sound.SoundPoolSampler
 
@@ -25,7 +26,12 @@ class AppContainer(context: Context) {
 
     /** 디버그 패널이 쓰는 가짜 입력. P7에서 실제 SDK 입력 소스를 병행한다. */
     val fakeInput = FakeVehicleInputSource(clock)
-    val inputSources: List<VehicleInputSource> = listOf(fakeInput)
+    /** 실제 SDK 입력. 실패해도 앱은 화면 조작만으로 동작한다. */
+    val pleosInput = PleosVehicleInputSource(context, clock)
+    val inputSources: List<VehicleInputSource> = listOf(fakeInput, pleosInput)
 
-    init { runner.start() }
+    init {
+        runner.start()
+        try { pleosInput.start() } catch (t: Throwable) { Log.w("PJAM_PLEOS", "start failed: $t") }
+    }
 }

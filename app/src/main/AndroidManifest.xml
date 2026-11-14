@@ -8,7 +8,9 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <!-- 차량 읽기 권한은 P7(Vehicle SDK 연결) 때 @RequiresPermission으로 확인한 것만 추가한다. -->
+    <!-- 차량 읽기 권한: SDK 2.3.2의 @RequiresPermission으로 확인한 것만 (FINDINGS V1). 제어(set) 권한은 쓰지 않는다. -->
+    <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+    <uses-permission android:name="pleos.car.permission.CAR_LIGHTS" />
 
     <application
         android:name=".PJamApp"

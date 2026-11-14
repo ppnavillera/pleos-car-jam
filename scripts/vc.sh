@@ -3,6 +3,7 @@
 #   scripts/vc.sh gear P|R|N|D
 #   scripts/vc.sh brake 0..100
 #   scripts/vc.sh steering -540..540
+#   scripts/vc.sh turn Off|BlinkLeft|BlinkRight|FlashLeft|FlashRight
 #   scripts/vc.sh state
 # 원리: 쓰기 API(PUT)는 브라우저 세션이 살아 있을 때만 열린다(emulator_inactive).
 #       페이지가 1초마다 보내는 하트비트 POST /browser/session 를 우리가 대신 보낸다.
@@ -26,6 +27,9 @@ case "${1:-state}" in
   steering)
     curl -s -m 5 -X PUT "$BASE/vehicle/controls?speed=0&accelerator=0&brake=0&steering=$2" >/dev/null; sleep 0.3; beat
     state_field "print('steering_deg', d['controls']['steering_deg'])" ;;
+  turn)
+    curl -s -m 5 -X PUT "$BASE/vehicle/turn-signal?mode=$2" >/dev/null; sleep 0.3; beat
+    echo "turn $2" ;;
   state)
     state_field "print('gear', d['gear']['actual']['value'], 'brake', d['controls']['brake_pct'], 'steering', d['controls']['steering_deg'])" ;;
   *) echo "usage: vc.sh gear|brake|steering|state"; exit 2 ;;
