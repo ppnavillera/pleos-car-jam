@@ -11,6 +11,7 @@
     <!-- 차량 읽기 권한은 P7(Vehicle SDK 연결) 때 @RequiresPermission으로 확인한 것만 추가한다. -->
 
     <application
+        android:name=".PJamApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

@@ -46,6 +46,9 @@ if A install -r -t "$APK" >"$OUT/install.log" 2>&1; then pass install; else fail
 
 dump_ui() { A exec-out uiautomator dump /dev/tty 2>/dev/null | sed 's/UI hierarchy dumped to.*//' ; }
 
+# 앱은 주차 전용이라 기어가 P가 아니면 플랫폼이 가린다. Virtual Console API로 P로 맞춘다(T0-0).
+if bash "$ROOT/scripts/vc.sh" gear P 2>/dev/null | grep -q Park; then pass gear-park; else skip gear-park "Virtual Console 조작 실패. 기어가 P인지 확인"; fi
+
 A shell am force-stop "$PKG" >/dev/null 2>&1
 A logcat -c
 if A shell am start -W -n "$ACT" >"$OUT/start.log" 2>&1 && ! grep -q -i "error" "$OUT/start.log"; then pass launch; else fail launch "$OUT/start.log"; fi
