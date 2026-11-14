@@ -111,7 +111,7 @@ Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + �
 
 **처리 (계획서 3.6의 단계 1)**
 - 잠금 판정은 SDK 기어를 따른다: P가 아니면 잠금 화면 + 엔진 Stop(녹음 중이면 끝내고 내용 유지) + 오디오 포커스 반납. 기어를 SDK가 못 줄 때만 CarPropertyManager → UX 제한 → "P로 간주" 순으로 내려간다(`PleosGearSource`, 화면 상단에 어느 방식인지 표시).
-- **CarUxRestrictions는 병행 정지 신호가 아니라 기어를 모를 때의 대체다.** 기어를 P로 아는데 UX 제한이 걸리는 경우는 잠그지 않는다(실차에서 P단 오탐 방지). SDK 콜백을 놓치는 경우의 이중화는 UX가 SDK보다 약 10~40ms 늦게 오므로 별도로 하지 않았다.
+- **CarUxRestrictions는 두 번째 독립 정지 신호다.** `requiresDistractionOptimization=true`는 "플랫폼이 이 앱(주행 최적화 미선언)을 가린다"는 뜻이라, 기어가 P로 읽히더라도 그 뒤에서 소리가 계속 나는 것이 바로 고친 버그다. 그래서 P로 읽히는데 UX 제한이 걸려도 멈춘다(오탐이 아님). 에뮬레이터 P에서 UX는 `false`로 측정됐다(P 복귀 후 6회 모두). 판정은 `잠금 = 강제 || SDK 기어가 P 아님 || UX 제한`이고, SDK 콜백이 UX보다 약 10~40ms 빨라 보통 SDK가 먼저 멈춘다. UX가 있으면 SDK 콜백을 놓쳐도 멈춘다. 기어를 아예 못 읽을 때(3.6 단계 3)에는 UX만으로 판정한다.
 - **릴리스 매니페스트에는 `android.car.permission.CAR_POWERTRAIN`을 넣지 않았다.** SDK 경로가 CAR_DRIVE만으로 되고, 승인 안 된 권한을 선언하면 심사에서 떨어질 수 있어서다(계획서 1.3). 디버그 매니페스트(`app/src/debug/`)에만 두어 CarPropertyManager 경로를 시험한다. 결정은 PLAN_CHANGES에 적었다. 사용자가 원하면 릴리스에도 넣을 수 있다.
 - 입력 차단: 플랫폼이 화면을 가려도 SDK 콜백은 계속 온다. 비활성(잠금·백그라운드) 중에는 차량·화면 입력이 소리도 포커스도 만들지 않는다(`PJAM_LOCK input dropped`).
 - P 복귀: 트랙 데이터 그대로, 재생은 정지 상태(자동 재생 안 함). `scripts/gear_regression.sh`가 확인한다.
@@ -138,9 +138,12 @@ Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + �
 - **콜백 간격**: 197번 PUT에 174번 콜백(일부 합쳐짐), 평균 123ms, 중앙값 110ms, p95 215ms, 최대 325ms. PUT 간격이 100ms였으므로 간격은 Virtual Console 쪽이 만든다. 연속으로 움직일 때 약 8~10회/초라서 3구간 판정에는 충분하다.
 - **3구간 경계**: 계획서 기본값(±10° 경계, ±3° 히스테리시스) 유지. 값이 정수 도 단위이고 간격이 거칠어(10° 점프 가능) 히스테리시스 ±3°는 충분히 좁다. 이 경계의 체감은 손으로 해 봐야 안다 → [수동].
 
-## V5 방향지시등
-- 미착수(M0). 카탈로그 단서: Turn Signal State 카드(`PUT /vehicle/turn-signal`, 필드 `mode`), 차량 속성 `TURN_SIGNAL_STATE` 0x11400408(표준). Hazard는 별도 카드(`HAZARD_LIGHTS_SWITCH` 0x11400E13).
-- 브레이크: Brake Pedal 카드 0..100%, 차량 속성 `BRAKE_PEDAL_STATUS` 0x21200409(벤더).
+## V5 방향지시등 (T0-9, 2026-11-15 실측)
+- enum: `TurnSignalValue` **OFF(0), RIGHT(1), LEFT(2)** 세 가지뿐 (V1). Virtual Console의 BlinkLeft·FlashLeft는 모두 `LEFT`, BlinkRight·FlashRight는 `RIGHT`로 도착한다.
+- **점멸 콜백 없음:** `BlinkLeft`를 11초 켜 둔 동안 TURN_SIGNAL 콜백은 **1번**(켤 때)뿐이었다. 깜빡임마다 오지 않으므로 "켜는 순간"이 곧 Trigger다.
+- **비상등:** Virtual Console Hazard Lights를 On(`PUT /vehicle/lights?feature=hazard&value=true`, 상태 `hazard_on=true`)으로 해도 TURN_SIGNAL 콜백은 오지 않았고 값도 OFF로 남는다. 별도 속성이라 앱 입력에는 영향이 없다.
+- 켜면 플랫폼이 사각지대 카메라 창을 앱 위에 띄운다(V3 백그라운드 신호 참고).
+- 카탈로그 단서: 속성 `TURN_SIGNAL_STATE` 0x11400408, 브레이크 `BRAKE_PEDAL_STATUS` 0x21200409(벤더).
 
 ## V6 지연 (T0-10, 2026-11-15 실측)
 `scripts/vc_measure.py brake`: 브레이크 100/0을 20번 교대로 PUT. 호스트 시각 → 앱의 `PJAM_SIG` 로그 시각(`logcat -v epoch`).
@@ -153,15 +156,16 @@ Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + �
 
 ## V7 화면
 - 해상도 `wm size`: 2560x1440, 밀도 160dpi → 전체 1600×900dp
-- 앱 창: uiautomator 기준 bounds `[853,90][2535,1300]` (= 1682×1210 px = 1682×1210dp). 화면 좌측(주행 정보)과 하단 공조 바를 시스템이 차지한다. 멀티 윈도우 크기는 M0에서 측정
+- 앱 창: uiautomator 기준 bounds `[853,90][2535,1300]` (= 1682×1210 px = 1682×1210dp). 화면 좌측(주행 정보)과 하단 공조 바를 시스템이 차지한다. **T0-11 중 측정한 것은 여기까지다. 멀티 윈도우로 창 크기를 바꾼 경우는 측정하지 못했다(미확인).** 일반 폰 에뮬레이터(1080×2400 세로)에서는 상단 바 버튼이 화면 밖으로 밀리는 것을 확인했다(T2-6 반응형 배치에서 해결)
 
 ## V8 오디오 포커스
-미착수 (M0). T1-5는 계획서 3.5 기본값으로 구현.
+**미확인 (T0-12).** 문서 요약과 다른 앱과의 포커스 이동 시험은 하지 않았다(에뮬레이터에 시험용 미디어 앱이 없어 포커스를 뺏는 쪽을 만들지 못함). T1-5는 계획서 3.5 기본값(USAGE_MEDIA, AUDIOFOCUS_GAIN, 손실 시 Stop)으로 구현했고, 소리가 날 때 `dumpsys audio` 기준 포커스 GAIN 보유와 AudioOut 스레드 동작만 확인했다. 앱 전환·기어 잠금에서는 포커스를 반납한다(`PJAM_FOCUS`).
 
 ## 오디오 재생 측정 (T0-13, 2026-11-15 실측)
 엔진이 스텝 예정 시각과 `play()`를 부르기 직전 시각의 차(lag)를 `StepLagStats`(링 버퍼)로 모은다. 스텝마다 로그를 찍지 않고 200스텝마다 한 줄 요약(`PJAM_LAG`)을 낸다.
 - 조건: 100 BPM, DRUM 녹음 상태로 메트로놈(박마다 소리) 75초, 400스텝. 에뮬레이터(arm64), 엔진 스레드 우선순위 URGENT_AUDIO.
 - 결과: **p50 0.16ms, p95 0.74ms, p99 1.19ms, 최대 1.36ms, 누락 스텝 0.** 게이트 G2(p95 < 15ms) 통과 → **SoundPoolSampler 유지, MixerSampler 교체 불필요.**
+- **3분 연속(T2-9, 190초, 1200스텝, `scripts/lag_run.sh`)**: p50 0.25ms, **p95 0.79ms**, p99 1.25ms, **최대 8.26ms**(처음 200스텝 안의 한 번, 이후 증가 없음), **누락 스텝 0** → T2-9의 "p95 < 15ms, 누락 0" 충족. 최대값 8.26ms는 게이트(15ms) 이내지만 귀로는 안 들릴 수준인지 확인하지 못했다.
 - 한계: 이 값은 "엔진이 늦게 깨어난 정도"다. SoundPool 내부 버퍼링과 오디오 출력 지연은 포함하지 않는다(그건 귀로 확인해야 한다, [수동]). 3분 연속 측정은 T2-9에서 같은 도구로 한다.
 
 ## 문서와 다른 점

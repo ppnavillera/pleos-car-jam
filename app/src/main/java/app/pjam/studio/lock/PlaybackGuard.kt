@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
  * P단 잠금과 백그라운드 정지를 한곳에서 결정한다 (순수 Kotlin, Android 의존 없음).
  *
  * 소리를 멈추는 길은 둘이고 같은 `onStop` 으로 모인다.
- *  - 잠금: 기어가 P가 아님(SDK 기어 신호), 기어를 모를 때는 UX 제한이 걸림, 디버그 강제 잠금
+ *  - 잠금: 기어가 P가 아님(SDK 기어 신호), **또는 CarUxRestrictions가 주행 제한을 알림**(두 번째 독립 신호), 디버그 강제 잠금
+ *    UX 제한(requiresDistractionOptimization=true)은 플랫폼이 주행 최적화 미선언 앱을 가린다는 뜻이다. 그 뒤에서 소리가 계속 나는 게
+ *    바로 고친 버그이므로, P로 읽히는데 UX 제한이 걸려도 멈추는 쪽이 맞다(오탐이 아니다). 에뮬레이터 P에서는 false로 측정됐다.
  *  - 비활성: Activity가 onStop(다른 앱으로 전환). onPause·포커스 손실은 쓰지 않는다 — 방향지시등 때 뜨는 사각지대 창에도 오기 때문이다
  * 활성 → 비활성으로 넘어가는 순간 `onStop(사유)`를 정확히 한 번 부른다. 엔진의 Stop은 녹음 중이면 녹음을 끝내고
  * 내용을 유지한다. P/전경으로 돌아와도 **재생을 자동으로 다시 켜지 않는다**(정지 상태로 둔다).
@@ -52,7 +54,7 @@ class PlaybackGuard(
         var stopReason: String? = null
         synchronized(lock) {
             change()
-            val lockedNow = forced || gear == GearKind.NOT_PARK || (gear == GearKind.UNKNOWN && ux == true)
+            val lockedNow = forced || gear == GearKind.NOT_PARK || ux == true
             _locked.value = lockedNow
             val activeNow = !lockedNow && foreground
             log("$what → locked=$lockedNow active=$activeNow")

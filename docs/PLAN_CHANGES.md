@@ -25,6 +25,7 @@
 | 3.1 `GearSource`만 Car API를 만진다 | 구현을 `input/pleos/PleosGearSource`에 두고 Throwable을 잡는다. 판정·잠금 로직은 Android 의존 없는 `lock/PlaybackGuard` | 단위 테스트 가능 |
 | (정의 없음) 권한 | `android.car.permission.CAR_POWERTRAIN`은 **디버그 매니페스트에만** 둔다 | 릴리스에 넣으면 승인 안 된 권한으로 심사에서 떨어질 위험(계획서 1.3). 필요하면 사용자가 결정 |
 | T2-8 백그라운드 정지 | 기어 잠금과 같은 `PlaybackGuard.onStop` 경로. 기준은 Activity `onStop` | 방향지시등 사각지대 창이 onPause·포커스 손실을 일으켜서 onPause 기준은 못 쓴다 (FINDINGS V3) |
+| 3.6 단계 3: UX 제한은 기어를 모를 때만 | **UX 제한은 항상 두 번째 정지 신호로 건다.** 잠금 = 강제 \|\| SDK 기어가 P 아님 \|\| UX 제한 | 플랫폼이 앱을 가린다는 뜻이라 그 뒤에서 소리가 나면 안 된다. SDK 콜백을 놓쳐도 멈춘다 |
 | 3.3 기어 이탈 시 | 엔진 Stop(녹음 종료·내용 유지·정지), 입력 차단, 포커스 반납. P 복귀 시 자동 재생 없음 | `scripts/gear_regression.sh` |
 
 ## 2026-11-15 (2) 입력 판정 규칙 두 개가 필요 없어짐 (계획서 3.4)

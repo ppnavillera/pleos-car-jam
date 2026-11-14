@@ -62,10 +62,22 @@ class PlaybackGuardTest {
         assertTrue(guard.locked.value); assertEquals(1, stops.size)
     }
 
-    @Test fun knownParkIgnoresUxRestriction() {
+    @Test fun uxRestrictionIsASecondIndependentStopSignalEvenWhenGearSaysPark() {
+        // SDK 기어 콜백을 놓치거나 아직 P로 읽히는 동안에도 플랫폼이 앱을 가리면(UX 제한) 소리를 멈춘다
         foregroundInPark()
         guard.onUx(true, "ux")
-        assertFalse(guard.locked.value); assertTrue(guard.active)
+        assertTrue(guard.locked.value); assertFalse(guard.allowInput())
+        assertEquals(1, stops.size)
+        guard.onUx(false, "ux")
+        assertFalse(guard.locked.value); assertTrue(guard.allowInput())
+        assertEquals(1, stops.size) // 풀려도 재생을 다시 켜지 않는다
+    }
+
+    @Test fun uxThenGearSignalsStopOnlyOnce() {
+        foregroundInPark()
+        guard.onUx(true, "ux")
+        guard.onGear(GearKind.NOT_PARK, "sdk")
+        assertEquals(1, stops.size)
     }
 
     @Test fun forcedLockForRehearsalStopsAndUnlocks() {
