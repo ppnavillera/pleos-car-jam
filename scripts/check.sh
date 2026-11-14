@@ -111,6 +111,17 @@ if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -x "$ROOT/scri
   if A logcat -d -s PJAM_INPUT:I | grep -q "방향지시등 좌 → 스네어"; then pass vc-turn-left-input-bar; else fail vc-turn-left-input-bar "PJAM_INPUT 로그 없음"; fi
   bash "$ROOT/scripts/vc.sh" turn FlashRight >/dev/null 2>&1; sleep 1.5; bash "$ROOT/scripts/vc.sh" turn Off >/dev/null 2>&1; sleep 0.5
   if A logcat -d -s PJAM_INPUT:I | grep -q "방향지시등 우 → 하이햇"; then pass vc-turn-right-flash; else fail vc-turn-right-flash "PJAM_INPUT 로그 없음"; fi
+  # 핸들(T1-10): Virtual Console 값은 SDK에서 부호가 반대로 온다(V4). VC +100 → SDK -100 → 왼쪽 구간
+  if A logcat -d -s PJAM_PLEOS:I | grep -q "capability STEERING accessType=READ"; then pass sdk-steering-capability; else fail sdk-steering-capability "PJAM_PLEOS 에 STEERING capability 없음"; fi
+  A logcat -c
+  bash "$ROOT/scripts/vc.sh" steering 100 >/dev/null 2>&1; sleep 1
+  if A logcat -d -s PJAM_SIG:I | grep -q "item=STEERING value=-100.0"; then pass vc-steering-reaches-sdk "VC +100 → SDK -100.0"; else fail vc-steering-reaches-sdk "PJAM_SIG 에 STEERING -100.0 없음"; fi
+  if A logcat -d -s PJAM_INPUT:I | grep -q "핸들 좌"; then pass vc-steering-left-zone; else fail vc-steering-left-zone "PJAM_INPUT 에 '핸들 좌' 없음"; fi
+  bash "$ROOT/scripts/vc.sh" steering 0 >/dev/null 2>&1; sleep 1
+  if A logcat -d -s PJAM_INPUT:I | grep -q "핸들 중"; then pass vc-steering-center-zone; else fail vc-steering-center-zone "PJAM_INPUT 에 '핸들 중' 없음"; fi
+  bash "$ROOT/scripts/vc.sh" steering -100 >/dev/null 2>&1; sleep 1
+  if A logcat -d -s PJAM_INPUT:I | grep -q "핸들 우"; then pass vc-steering-right-zone; else fail vc-steering-right-zone "PJAM_INPUT 에 '핸들 우' 없음"; fi
+  bash "$ROOT/scripts/vc.sh" steering 0 >/dev/null 2>&1
 else
   skip vc-smoke "스튜디오 화면 또는 vc.sh 없음"
 fi

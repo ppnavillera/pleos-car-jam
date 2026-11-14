@@ -10,6 +10,7 @@ import app.pjam.studio.engine.EngineRunner
 import app.pjam.studio.engine.LoopEngine
 import app.pjam.studio.engine.StepLagStats
 import app.pjam.studio.input.FakeVehicleInputSource
+import app.pjam.studio.input.InputSourceManager
 import app.pjam.studio.input.VehicleInputSource
 import app.pjam.studio.input.pleos.PleosGearSource
 import app.pjam.studio.input.pleos.PleosVehicleInputSource
@@ -39,7 +40,7 @@ class AppContainer(context: Context) {
     val focus = AudioFocusController(context) { engine.send(EngineCommand.Stop) }
 
     /**
-     * P단 잠금 + 백그라운드 정지. 기어가 P가 아니게 되거나 Activity가 onPause 되면 엔진을 Stop(녹음 중이면 끝내고 내용 유지)하고
+     * P단 잠금 + 백그라운드 정지. 기어가 P가 아니게 되거나 Activity가 onStop 되면 엔진을 Stop(녹음 중이면 끝내고 내용 유지)하고
      * 오디오 포커스를 반납한다. P/전경으로 돌아와도 재생은 자동으로 켜지 않는다.
      */
     val guard = PlaybackGuard(
@@ -50,18 +51,24 @@ class AppContainer(context: Context) {
         },
         log = { Log.i("PJAM_LOCK", it) },
     )
-    val gearSource = PleosGearSource(context, guard)
 
-    /** 디버그 패널이 쓰는 가짜 입력. P7에서 실제 SDK 입력 소스를 병행한다. */
+    /** 디버그 패널이 쓰는 가짜 입력. 실제 SDK 입력과 병행한다. */
     val fakeInput = FakeVehicleInputSource(clock)
-    /** 실제 SDK 입력. 실패해도 앱은 화면 조작만으로 동작한다. */
-    val pleosInput = PleosVehicleInputSource(context, clock)
-    val inputSources: List<VehicleInputSource> = listOf(fakeInput, pleosInput)
+
+    /**
+     * 실제 SDK 입력과 기어 읽기. 만들거나 시작하다 Throwable이 나도 앱은 계속 돌고 화면 조작만 된다 (T1-12).
+     */
+    val inputManager = InputSourceManager(
+        vehicleFactory = { PleosVehicleInputSource(context, clock) },
+        gearFactory = { PleosGearSource(context, guard) },
+        gearSink = guard,
+        log = { Log.w("PJAM_PLEOS", it) },
+    )
+    val inputSources: List<VehicleInputSource> get() = listOfNotNull(fakeInput, inputManager.vehicleSource)
 
     init {
         runner.start()
-        try { pleosInput.start() } catch (t: Throwable) { Log.w("PJAM_PLEOS", "start failed: $t") }
+        inputManager.start()
         try { SignalProbe(context).start() } catch (t: Throwable) { Log.w("PJAM_V2", "probe start failed: $t") } // 디버그에서만 동작
-        try { gearSource.start() } catch (t: Throwable) { Log.w("PJAM_GEAR", "start failed: $t") }
     }
 }

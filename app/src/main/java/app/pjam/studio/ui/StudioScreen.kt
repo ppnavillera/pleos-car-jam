@@ -75,6 +75,7 @@ fun StudioScreen(vm: StudioViewModel, debugPanel: Boolean) {
     val locked by vm.locked.collectAsStateWithLifecycle()
     val gear by vm.gear.collectAsStateWithLifecycle()
     val method by vm.gearMethod.collectAsStateWithLifecycle()
+    val inputMode by vm.inputMode.collectAsStateWithLifecycle()
 
     MaterialTheme(colorScheme = darkColorScheme()) {
         Box(Modifier.fillMaxSize().background(Bg).semantics { contentDescription = "pjam_root" }) {
@@ -82,7 +83,7 @@ fun StudioScreen(vm: StudioViewModel, debugPanel: Boolean) {
                 Modifier.fillMaxSize().padding(20.dp).semantics { contentDescription = "studio_screen" },
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                TopBar(st, sel, vm, gearText(gear, method))
+                TopBar(st, sel, vm, gearText(gear, method) + if (inputMode == app.pjam.studio.input.InputMode.SCREEN_ONLY) " · 차량 신호 없음, 화면 조작" else "")
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     TrackKind.entries.forEach { k ->
                         val t = st.tracks.first { it.kind == k }

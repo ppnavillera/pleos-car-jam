@@ -94,6 +94,7 @@ AFTER="$(cells "$OUT/gear-5-park.xml")"
 [ "$AFTER" = "$BEFORE" ] && pass gear-p-data-intact "$AFTER" || fail gear-p-data-intact "전: [$BEFORE] 후: [$AFTER]"
 grep -q 'content-desc="lock_screen"' "$OUT/gear-5-park.xml" && fail gear-p-unlocked "P 인데 잠금 화면이 남음" || pass gear-p-unlocked
 sleep 6
+A logcat -d -v epoch -s PJAM_ENG:I PJAM_LOCK:I PJAM_INPUT:I PJAM_FOCUS:I PJAM_LIFE:I >"$OUT/gear-6-park-all.log"
 A logcat -d -s PJAM_ENG:I >"$OUT/gear-6-park.log"
 grep -q 'LOOP wrap' "$OUT/gear-6-park.log" && fail gear-p-not-autoplay "P 복귀 후 재생이 저절로 시작됨" || pass gear-p-not-autoplay "정지 상태 유지"
 standby && pass gear-p-silent || fail gear-p-silent "P 복귀 후 소리가 남"

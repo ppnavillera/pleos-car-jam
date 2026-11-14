@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class InputBarState(val text: String, val seq: Int)
@@ -97,6 +98,13 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
 
     fun togglePlay() { if (!c.guard.allowInput()) return; c.focus.acquire(); c.engine.send(EngineCommand.TogglePlay) }
     fun toggleRecord() { if (!c.guard.allowInput()) return; c.focus.acquire(); c.engine.send(EngineCommand.ToggleRecord(_selected.value)) }
+
+    /** 차량 신호를 쓸 수 있는지. SCREEN_ONLY면 화면 조작만으로 동작한다 (T1-12). */
+    val inputMode: StateFlow<app.pjam.studio.input.InputMode> = run {
+        val support = c.inputManager.vehicleSource?.support ?: MutableStateFlow(emptyMap())
+        kotlinx.coroutines.flow.combine(support, c.inputManager.startFailed) { s, failed -> app.pjam.studio.input.InputModes.resolve(s, failed) }
+            .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, app.pjam.studio.input.InputMode.CHECKING)
+    }
 
     // 잠금 상태 (기어)
     val locked: StateFlow<Boolean> get() = c.guard.locked

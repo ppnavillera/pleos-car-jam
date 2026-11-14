@@ -10,9 +10,7 @@ enum class TurnDirection { OFF, LEFT, RIGHT }
 class InputMapper(
     private val steeringEnter: Float = 10f,    // 좌우 구간에 들어가는 각도(절댓값)
     private val steeringExit: Float = 7f,      // 중앙으로 돌아오는 각도 (= 10 − 히스테리시스 3)
-    private val rightIsPositive: Boolean = true, // V4에서 부호 확정
-    private val brakePress: Float = 5f,        // % 이상으로 올라가면 Trigger
-    private val brakeRelease: Float = 2f,      // % 미만으로 내려가야 다시 받음
+    private val rightIsPositive: Boolean = true, // 이 클래스에 들어오는 각도의 부호. SDK는 음수=왼쪽이라 true (FINDINGS V4)
 ) {
     private var brakePressed: Boolean? = null
     private var turn: TurnDirection? = null
@@ -20,17 +18,18 @@ class InputMapper(
     private val toggles = HashMap<ToggleSource, Boolean>()
     private val levels = HashMap<LevelSource, Float>()
 
-    /** 브레이크 0..100%. 수치가 아니라 불리언만 오면 true=100, false=0으로 넘긴다. */
-    fun brake(percent: Float?, ts: Long): InputEvent? {
-        if (percent == null) return null
+    /**
+     * 브레이크. SDK 값이 Boolean이라(FINDINGS V1) false→true가 Trigger다. 계획서 3.4의 5%/2% 비율 규칙은 쓰지 않는다(PLAN_CHANGES).
+     * 첫 값은 기준값이라 이벤트가 아니다.
+     */
+    fun brake(pressed: Boolean?, ts: Long): InputEvent? {
+        if (pressed == null) return null
         val was = brakePressed
-        if (was == null) { brakePressed = percent >= brakePress; return null } // 기준값
-        if (!was && percent >= brakePress) { brakePressed = true; return InputEvent.Trigger(TriggerSource.BRAKE, ts) }
-        if (was && percent < brakeRelease) brakePressed = false
-        return null
+        brakePressed = pressed
+        return if (was == false && pressed) InputEvent.Trigger(TriggerSource.BRAKE, ts) else null
     }
 
-    /** 방향지시등. 꺼짐→좌/우, 좌↔우 직접 전환만 Trigger. 같은 방향 안의 Blink↔Flash는 같은 값으로 들어와 무시된다. */
+    /** 방향지시등. 꺼짐→좌/우, 좌↔우 직접 전환만 Trigger. SDK 값은 OFF/LEFT/RIGHT뿐이라 Blink/Flash 구분은 없다(PLAN_CHANGES). */
     fun turnSignal(dir: TurnDirection?, ts: Long): InputEvent? {
         if (dir == null) return null
         val prev = turn

@@ -14,32 +14,32 @@ import org.junit.Test
 class InputMapperTest {
     private val m = InputMapper()
 
-    @Test fun brakeFiresOnRiseAboveFivePercentOnly() {
-        assertNull(m.brake(0f, 1)) // 기준값
-        assertNull(m.brake(3f, 2))
-        assertEquals(InputEvent.Trigger(TriggerSource.BRAKE, 3), m.brake(6f, 3))
-        assertNull(m.brake(80f, 4)) // 계속 밟고 있음
-        assertNull(m.brake(100f, 5))
-    }
-
-    @Test fun brakeNeedsRelease_below2PercentToRearm() {
-        m.brake(0f, 0); m.brake(50f, 1)
-        assertNull(m.brake(3f, 2)) // 2% 미만이 아니므로 아직 눌린 상태
-        assertNull(m.brake(60f, 3)) // 다시 올라가도 Trigger 아님
-        assertNull(m.brake(1f, 4))
-        assertEquals(InputEvent.Trigger(TriggerSource.BRAKE, 5), m.brake(5f, 5))
+    @Test fun brakeFiresOnFalseToTrueOnly() {
+        assertNull(m.brake(false, 1)) // 기준값
+        assertEquals(InputEvent.Trigger(TriggerSource.BRAKE, 2), m.brake(true, 2))
+        assertNull(m.brake(true, 3)) // 계속 밟고 있음 / 같은 값 반복
+        assertNull(m.brake(false, 4)) // 뗌은 Trigger 아님
+        assertEquals(InputEvent.Trigger(TriggerSource.BRAKE, 5), m.brake(true, 5))
     }
 
     @Test fun brakeInitiallyPressedDoesNotFire() {
-        assertNull(m.brake(70f, 0))
-        assertNull(m.brake(90f, 1))
+        assertNull(m.brake(true, 0))
+        assertNull(m.brake(true, 1))
+        assertNull(m.brake(false, 2))
+        assertEquals(InputEvent.Trigger(TriggerSource.BRAKE, 3), m.brake(true, 3))
+    }
+
+    @Test fun brakeNullIsIgnoredAndKeepsState() {
+        m.brake(false, 0)
+        assertNull(m.brake(null, 1))
+        assertEquals(InputEvent.Trigger(TriggerSource.BRAKE, 2), m.brake(true, 2))
     }
 
     @Test fun turnSignalTriggersOnOffToDirection() {
         assertNull(m.turnSignal(TurnDirection.OFF, 0)) // 기준값
         assertEquals(InputEvent.Trigger(TriggerSource.TURN_LEFT, 1), m.turnSignal(TurnDirection.LEFT, 1))
         assertNull(m.turnSignal(TurnDirection.LEFT, 2)) // 점멸 콜백 반복
-        assertNull(m.turnSignal(TurnDirection.LEFT, 3)) // Blink↔Flash는 같은 방향이라 같은 값
+        assertNull(m.turnSignal(TurnDirection.LEFT, 3)) // Blink↔Flash는 SDK에서 같은 LEFT로 온다
         assertNull(m.turnSignal(TurnDirection.OFF, 4))
         assertEquals(InputEvent.Trigger(TriggerSource.TURN_RIGHT, 5), m.turnSignal(TurnDirection.RIGHT, 5))
     }
@@ -72,6 +72,20 @@ class InputMapperTest {
         var events = 0
         for ((i, d) in listOf(9.5f, 10.2f, 9.8f, 10.1f, 9.9f, 10.3f).withIndex()) if (m.steering(d, i.toLong()) != null) events++
         assertEquals(1, events)
+    }
+
+    @Test fun steeringSdkNegativeIsLeft() {
+        // V4: SDK 값은 음수 = 왼쪽, 양수 = 오른쪽 (Virtual Console과 반대 부호)
+        m.steering(0f, 0)
+        assertEquals(InputEvent.Zone(SteeringZone.LEFT, 1), m.steering(-15f, 1))
+        assertEquals(InputEvent.Zone(SteeringZone.CENTER, 2), m.steering(-2f, 2))
+        assertEquals(InputEvent.Zone(SteeringZone.RIGHT, 3), m.steering(15f, 3))
+    }
+
+    @Test fun steeringFirstValueIsBaselineEvenFarFromCenter() {
+        assertNull(m.steering(-100f, 0)) // 구독 직후 값은 기준
+        assertNull(m.steering(-120f, 1))
+        assertEquals(InputEvent.Zone(SteeringZone.CENTER, 2), m.steering(0f, 2))
     }
 
     @Test fun steeringSignCanBeFlipped() {
