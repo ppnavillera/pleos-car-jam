@@ -369,6 +369,8 @@ private fun DebugPanel(vm: StudioViewModel) {
         DbgButton("dbg_zone_left", "핸들 좌") { f.zone(SteeringZone.LEFT) }
         DbgButton("dbg_zone_center", "핸들 중") { f.zone(SteeringZone.CENTER) }
         DbgButton("dbg_zone_right", "핸들 우") { f.zone(SteeringZone.RIGHT) }
+        DbgButton("dbg_fan_min", "풍량 최소") { f.level(app.pjam.studio.input.LevelSource.FAN_SPEED, 0f) }
+        DbgButton("dbg_fan_max", "풍량 최대") { f.level(app.pjam.studio.input.LevelSource.FAN_SPEED, 1f) }
         DbgButton("dbg_ac", "A/C") { f.toggle(ToggleSource.AC) }
         DbgButton("dbg_auto", "AUTO") { f.toggle(ToggleSource.AUTO) }
         DbgButton("dbg_recirc", "내기순환") { f.toggle(ToggleSource.RECIRCULATION) }
@@ -500,7 +502,7 @@ private fun LockScreen(gearLabel: String, vm: StudioViewModel) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("주차 중에만 연주할 수 있어요", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("P단으로 돌아오면 만들던 루프가 그대로 있어요. 재생은 직접 다시 눌러 주세요.", fontSize = 20.sp, color = TextDim)
+            Text("P단으로 돌아오면 만들던 루프가 그대로 있어요. 재생 중이었다면 처음부터 이어서 재생돼요.", fontSize = 20.sp, color = TextDim)
             Text(gearLabel, fontSize = 18.sp, color = TextDim)
             val forced by vm.forcedLock.collectAsStateWithLifecycle()
             if (forced) {

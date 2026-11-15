@@ -55,9 +55,16 @@ class EquipmentModelTest {
         assertEquals("화면 조작으로 대체", r[InputKind.BRAKE]!!.note)
     }
 
+    @Test fun fanSpeedIsConnectedAndExplainsTempoRole() {
+        val r = rows(all)[InputKind.FAN_SPEED]!!
+        assertEquals(EquipState.CONNECTED, r.state)
+        assertTrue(r.role.contains("템포"))
+        assertTrue(rows(all + (InputKind.FAN_SPEED to SupportState.UNSUPPORTED))[InputKind.FAN_SPEED]!!.role.contains("화면"))
+    }
+
     @Test fun unusedItemsAreLabelledNotConnected() {
         val r = rows(all)
-        for (k in listOf(InputKind.FAN_SPEED, InputKind.TEMPERATURE, InputKind.WINDOW, InputKind.WIPER, InputKind.DRIVE_MODE)) {
+        for (k in listOf(InputKind.TEMPERATURE, InputKind.WINDOW, InputKind.WIPER, InputKind.DRIVE_MODE)) {
             assertEquals(EquipState.UNUSED, r[k]!!.state)
         }
     }

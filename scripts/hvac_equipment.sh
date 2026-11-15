@@ -37,6 +37,8 @@ for k in AC AUTO RECIRCULATION DEFROSTER; do
 done
 if log_has PJAM_PLEOS "capability HVAC_POWER accessType=READ"; then pass sdk-hvac-power-capability; else fail sdk-hvac-power-capability "PJAM_PLEOS 에 HVAC_POWER capability 없음"; fi
 
+if log_has PJAM_PLEOS "capability FAN_SPEED accessType=READ"; then pass sdk-fan-capability; else fail sdk-fan-capability "PJAM_PLEOS 에 FAN_SPEED capability 없음"; fi
+
 # ---- 공조 변경 → 트랙 켜짐/꺼짐 (바뀔 때마다 뒤집힘) ----
 flip() { # <vc 필드> <기대 로그> <트랙>
   A logcat -c
@@ -62,6 +64,22 @@ sleep 0.5; dump_retry "$OUT/he-2.xml" || fail ui-dump "$OUT/he-2.xml"
 for t in DRUM BASS MELODY FX; do
   if $UI has "$OUT/he-2.xml" "switch_${t}_on"; then pass "vc-hvac-unmutes-$t"; else fail "vc-hvac-unmutes-$t" "switch_${t}_on 노드 없음"; fi
 done
+
+# ---- T3-1 풍량 → 템포: capability 1..8 을 70..140 BPM 으로. 범위 밖 값(0)은 끝 값(70) ----
+fan() { # <풍량 값> <기대 BPM> <이름>
+  A logcat -c
+  VC put /vehicle/hvac "fan_speed=$1" >/dev/null 2>&1
+  if wait_log PJAM_INPUT "풍량 → 템포 $2 BPM" 4; then
+    sleep 0.5; dump_retry "$OUT/he-fan-$3.xml"
+    if $UI text "$OUT/he-fan-$3.xml" bpm_text | grep -q "^$2 BPM"; then pass "vc-fan-$3-tempo-$2"; else fail "vc-fan-$3-tempo-$2" "화면 템포 표시가 $2 BPM 이 아님"; fi
+  else fail "vc-fan-$3-tempo-$2" "PJAM_INPUT 에 '풍량 → 템포 $2 BPM' 없음"; fi
+}
+VC put /vehicle/hvac fan_speed=3 >/dev/null 2>&1; sleep 1   # 기준값을 확실히 3 으로 (앱의 첫 값은 이벤트가 아니다)
+fan 8 140 max
+fan 5 110 mid
+fan 1 70 min
+fan 8 140 max2
+fan 0 70 below-range   # capability 범위(1..8) 밖 값 → 최소(70)
 
 # ---- 내 차 장비 ----
 A logcat -c

@@ -26,7 +26,7 @@ object EquipmentModel {
         InputKind.HVAC_POWER, InputKind.AC, InputKind.AUTO, InputKind.RECIRCULATION, InputKind.DEFROSTER,
         InputKind.FAN_SPEED, InputKind.TEMPERATURE, InputKind.WINDOW, InputKind.WIPER, InputKind.DRIVE_MODE,
     )
-    private val UNUSED_KINDS = setOf(InputKind.FAN_SPEED, InputKind.TEMPERATURE, InputKind.WINDOW, InputKind.WIPER, InputKind.DRIVE_MODE)
+    private val UNUSED_KINDS = setOf(InputKind.TEMPERATURE, InputKind.WINDOW, InputKind.WIPER, InputKind.DRIVE_MODE)
     private val TOGGLE_KINDS = HvacAssignment.TOGGLE_ORDER.associateBy { HvacAssignment.kindOf(it) }
 
     fun title(k: InputKind) = when (k) {
@@ -63,6 +63,7 @@ object EquipmentModel {
             InputKind.TURN_SIGNAL -> if (connected) "켜는 순간 소리: 좌=스네어·한 옥타브 아래·이전 음·라이저, 우=하이햇·한 옥타브 위·다음 음·스윕" else "화면 패드로 대체"
             InputKind.STEERING -> if (connected) "BASS는 1도·4도·5도, MELODY는 음역을 고름 (소리는 안 남)" else "화면 3버튼으로 대체"
             InputKind.HVAC_POWER -> "공조가 켜져 있어야 공조 버튼 신호가 와요"
+            InputKind.FAN_SPEED -> if (connected) "풍량이 템포를 정해요 (최소 70 · 최대 140 BPM)" else "화면 − / + 버튼으로 템포 조절"
             else -> {
                 val src = TOGGLE_KINDS[k]
                 val track = src?.let { assignment[it] }
@@ -75,7 +76,7 @@ object EquipmentModel {
             stateText = when (power) { true -> "연결됨 · 켜짐"; false -> "연결됨 · 꺼짐"; null -> "연결됨" }
             if (power == false) note = "공조 전원이 꺼져 있어요. 켜면 A/C·AUTO·내기순환·성에 제거가 들어와요."
         }
-        if (k in TOGGLE_KINDS && connected && power == false) note = "사유: 공조 전원이 꺼져 있어 신호가 안 올 수 있어요."
+        if ((k in TOGGLE_KINDS || k == InputKind.FAN_SPEED) && connected && power == false) note = "사유: 공조 전원이 꺼져 있어 신호가 안 올 수 있어요."
         if (!available && k != InputKind.HVAC_POWER) note = "화면 조작으로 대체"
         return EquipRow(k, title(k), role, state, stateText, note)
     }

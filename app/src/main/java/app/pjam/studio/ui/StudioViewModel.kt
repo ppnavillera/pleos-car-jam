@@ -122,7 +122,14 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
                 toggleMute(target)
                 show("${Labels.toggle(e.source)} → ${Labels.track(target)} 켜기/끄기")
             }
-            is InputEvent.Level -> show("${e.source} ${"%.2f".format(e.normalized)}")
+            is InputEvent.Level -> when (e.source) {
+                app.pjam.studio.input.LevelSource.FAN_SPEED -> {
+                    val bpm = app.pjam.studio.engine.Tempo.bpmFor(e.normalized)
+                    c.engine.send(EngineCommand.SetBpm(bpm))
+                    show("풍량 → 템포 $bpm BPM")
+                }
+                else -> show("${e.source} ${"%.2f".format(e.normalized)}")
+            }
             is InputEvent.Cycle -> show("${e.source}")
         }
     }

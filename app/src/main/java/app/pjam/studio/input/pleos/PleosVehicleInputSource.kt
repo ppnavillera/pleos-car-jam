@@ -14,6 +14,7 @@ import ai.pleos.playground.vehicle.listener.BrakePedalStatusListener
 import ai.pleos.playground.vehicle.listener.HvacAcStateListener
 import ai.pleos.playground.vehicle.listener.HvacAutoStateListener
 import ai.pleos.playground.vehicle.listener.HvacDefrosterStateListener
+import ai.pleos.playground.vehicle.listener.HvacFanSpeedListener
 import ai.pleos.playground.vehicle.listener.HvacPowerStateListener
 import ai.pleos.playground.vehicle.listener.HvacRecirculationStateListener
 import ai.pleos.playground.vehicle.listener.SteeringWheelAngleListener
@@ -22,6 +23,7 @@ import app.pjam.studio.engine.Clock
 import app.pjam.studio.input.InputEvent
 import app.pjam.studio.input.InputKind
 import app.pjam.studio.input.InputMapper
+import app.pjam.studio.input.LevelSource
 import app.pjam.studio.input.SupportState
 import app.pjam.studio.input.SupportTracker
 import app.pjam.studio.input.ToggleSource
@@ -57,7 +59,7 @@ class PleosVehicleInputSource(
 
     // 이 소스가 실제로 다루는 항목만 담는다(나머지 InputKind는 T3에서 구현할 때 추가). 그래야 InputModes가 "아직 판정 전"을 정확히 본다.
     private val tracker = SupportTracker(
-        listOf(InputKind.BRAKE, InputKind.TURN_SIGNAL, InputKind.STEERING, InputKind.AC, InputKind.AUTO, InputKind.RECIRCULATION, InputKind.DEFROSTER, InputKind.HVAC_POWER),
+        listOf(InputKind.BRAKE, InputKind.TURN_SIGNAL, InputKind.STEERING, InputKind.AC, InputKind.AUTO, InputKind.RECIRCULATION, InputKind.DEFROSTER, InputKind.HVAC_POWER, InputKind.FAN_SPEED),
     ) { Log.w(TAG, it) }
     override val support: StateFlow<Map<InputKind, SupportState>> = tracker.state
 
@@ -76,6 +78,10 @@ class PleosVehicleInputSource(
     private var recircArea: SeatArea? = null
     private var defrostArea: WindowArea? = null
     private var powerArea: SeatArea? = null
+    private var fanArea: SeatArea? = null
+    // 풍량 범위는 capability에서 받은 값을 쓴다 (실측 1..8, 값 0도 콜백으로 옴). 범위 밖 값은 InputMapper가 끝 값으로 처리한다.
+    @Volatile private var fanMin = 0f
+    @Volatile private var fanMax = 0f
 
     private val brakeListener = object : BrakePedalStatusListener {
         override fun onBrakePedalStatusUpdated(status: Boolean?) = onBrake(status, "listener")
@@ -111,6 +117,11 @@ class PleosVehicleInputSource(
         override fun onFailed(exception: Exception) = tracker.fail(InputKind.HVAC_POWER, exception)
     }
 
+    private val fanListener = object : HvacFanSpeedListener {
+        override fun onHvacFanSpeedUpdated(value: Int?) = onFan(value, "listener")
+        override fun onFailed(exception: Exception) = tracker.fail(InputKind.FAN_SPEED, exception)
+    }
+
     override fun start() {
         if (started) return
         started = true
@@ -140,6 +151,7 @@ class PleosVehicleInputSource(
         if (tracker.get(InputKind.RECIRCULATION) != SupportState.SUPPORTED) setupRecirc(v)
         if (tracker.get(InputKind.DEFROSTER) != SupportState.SUPPORTED) setupDefroster(v)
         if (tracker.get(InputKind.HVAC_POWER) != SupportState.SUPPORTED) setupPower(v)
+        if (tracker.get(InputKind.FAN_SPEED) != SupportState.SUPPORTED) setupFan(v)
     }
 
     private fun readable(a: AccessType) = a == AccessType.READ || a == AccessType.READ_WRITE
@@ -295,6 +307,30 @@ class PleosVehicleInputSource(
         }
     }
 
+    /** 풍량(T3-1): 영역과 범위는 capability가 돌려준 것을 그대로 쓴다. 범위를 못 받으면 미지원으로 둔다. */
+    private fun setupFan(v: Vehicle) {
+        tracker.guard(InputKind.FAN_SPEED) {
+            v.getHVAC().checkHvacFanSpeedCapabilities(
+                { cfg, areas ->
+                    tracker.guard(InputKind.FAN_SPEED) {
+                        val entry = areas.entries.firstOrNull()
+                        val bounds = entry?.value
+                        Log.i(TAG, "capability FAN_SPEED accessType=${cfg.accessType} areas=${areas.size} range=${bounds?.minValue}..${bounds?.maxValue}")
+                        val lo = bounds?.minValue
+                        val hi = bounds?.maxValue
+                        if (readable(cfg.accessType) && entry != null && lo != null && hi != null && hi > lo) {
+                            fanMin = lo.toFloat(); fanMax = hi.toFloat()
+                            tracker.mark(InputKind.FAN_SPEED, SupportState.SUPPORTED)
+                            v.getHVAC().registerHvacFanSpeed(entry.key, fanListener); fanArea = entry.key
+                            v.getHVAC().getHvacFanSpeed(entry.key, { s -> onFan(s, "initial") }, { e -> Log.w(TAG, "get FAN_SPEED failed: $e") })
+                        } else tracker.mark(InputKind.FAN_SPEED, SupportState.UNSUPPORTED)
+                    }
+                },
+                { e -> tracker.fail(InputKind.FAN_SPEED, e); retryLater() },
+            )
+        }
+    }
+
     /** 서비스 연결 전에 호출했다면 onFailed로 올 수 있다: 최대 4번, 1초 간격으로 다시 시도. */
     private fun retryLater() {
         if (!started || attempt >= 4) return
@@ -352,6 +388,16 @@ class PleosVehicleInputSource(
         }
     }
 
+    private fun onFan(value: Int?, from: String) {
+        tracker.guard(InputKind.FAN_SPEED) {
+            val ts = clock.nanos()
+            Log.i(SIG, "t=$ts item=FAN_SPEED value=$value range=$fanMin..$fanMax src=$from thread=${Thread.currentThread().name}")
+            if (from == "listener") _activity.tryEmit(InputKind.FAN_SPEED)
+            val e = synchronized(mapper) { mapper.level(LevelSource.FAN_SPEED, value?.toFloat(), fanMin, fanMax, ts) }
+            if (e != null) _events.tryEmit(e)
+        }
+    }
+
     private fun onPower(on: Boolean?, from: String) {
         tracker.guard(InputKind.HVAC_POWER) {
             Log.i(SIG, "t=${clock.nanos()} item=HVAC_POWER value=$on src=$from thread=${Thread.currentThread().name}")
@@ -375,8 +421,9 @@ class PleosVehicleInputSource(
         un("recirc") { recircArea?.let { v.getHVAC().unregisterHvacRecirculationState(it, recircListener) } }
         un("defroster") { defrostArea?.let { v.getHVAC().unregisterHvacDefrosterState(it, defrostListener) } }
         un("power") { powerArea?.let { v.getHVAC().unregisterHvacPowerState(it, powerListener) } }
+        un("fan") { fanArea?.let { v.getHVAC().unregisterHvacFanSpeed(it, fanListener) } }
         brakeRegistered = false; turnRegistered = false; steeringRegistered = false
-        acArea = null; autoArea = null; recircArea = null; defrostArea = null; powerArea = null
+        acArea = null; autoArea = null; recircArea = null; defrostArea = null; powerArea = null; fanArea = null
         try { v.release() } catch (t: Throwable) { Log.w(TAG, "release: $t") }
         vehicle = null
     }
@@ -384,7 +431,7 @@ class PleosVehicleInputSource(
     companion object {
         const val TAG = "PJAM_PLEOS"
         const val SIG = "PJAM_SIG"
-        private val ALL_KINDS = listOf(InputKind.BRAKE, InputKind.TURN_SIGNAL, InputKind.STEERING, InputKind.AC, InputKind.AUTO, InputKind.RECIRCULATION, InputKind.DEFROSTER, InputKind.HVAC_POWER)
+        private val ALL_KINDS = listOf(InputKind.BRAKE, InputKind.TURN_SIGNAL, InputKind.STEERING, InputKind.AC, InputKind.AUTO, InputKind.RECIRCULATION, InputKind.DEFROSTER, InputKind.HVAC_POWER, InputKind.FAN_SPEED)
         /** SDK 핸들 각도는 음수 = 왼쪽 (AAOS 정의, FINDINGS V4). Virtual Console 화면으로 눈 확인 전이다. 반대로 보이면 false로 뒤집는다. */
         const val STEERING_LEFT_IS_NEGATIVE = true
     }
