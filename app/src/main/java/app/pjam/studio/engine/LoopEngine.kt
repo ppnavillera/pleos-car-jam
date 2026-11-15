@@ -270,11 +270,11 @@ class LoopEngine(
             if (mutedApplied.getValue(k)) continue
             for (note in notes.getValue(k)) {
                 if (note.step != pos) continue
-                if (skipOnce.remove(n to note.sampleId)) continue // 방금 모니터링으로 울린 입력
+                if (skipOnce.isNotEmpty() && skipOnce.remove(n to note.sampleId)) continue // 방금 모니터링으로 울린 입력 (비어 있으면 Pair를 만들지 않는다)
                 sampler.play(note.sampleId, note.velocity)
             }
         }
-        skipOnce.removeAll { it.first <= n }
+        if (skipOnce.isNotEmpty()) skipOnce.removeAll { it.first <= n }
     }
 
     // ---------------------------------------------------------------- 스냅샷

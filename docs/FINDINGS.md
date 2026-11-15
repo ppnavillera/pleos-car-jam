@@ -199,6 +199,31 @@ Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + �
 
 **release 빌드 (T2-10)**: 서명 키는 `~/.pjam-signing/`(저장소 밖, 권한 700/600, DN은 `CN=P-JAM`만). release는 R8 minify 끔(SDK 클래스 유지 문제 없음), `assembleRelease` 약 27MB. 같은 applicationId의 debug와 release는 서명이 달라 서로 덮어쓸 수 없다(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) → `check.sh`가 설치 시 필요하면 지우고 다시 깐다. `scripts/release_smoke.sh` 결과는 PROGRESS 참고.
 
+## 최대 스텝 지연 완화 시도 (2026-11-15, 30분 제한, 사용자 지시 2단계)
+
+목표: M2 3분 측정에서 두 번 나온 최대값(24.8ms, 31.0ms)을 줄이거나 원인을 찾는다.
+
+| 확인 | 결과 |
+|---|---|
+| 엔진 스레드 우선순위 | 실제로 적용돼 있다. `ps -T`로 `pjam-engine`이 nice **-19**(`THREAD_PRIORITY_URGENT_AUDIO`)로 돈다. 코드만 믿은 것이 아니다 |
+| 스텝 루프의 할당 | 스텝마다 `Pair`(건너뛸 입력 확인)와 `removeAll` 람다를 만들던 것을 `skipOnce`가 비었을 때는 건너뛰게 했다(`LoopEngine.onStep`). `TrackKind.entries` 순회와 `publish()`의 새 상태 객체는 남겼다(스텝당 한 번, 수십 개 수준) |
+| GC | 측정 중 logcat에 이 앱의 GC 줄(`art`)이 **한 줄도 없었다**. 스텝 지연 10ms 초과를 시각과 함께 남기는 로그(`PJAM_LAG slow step=…`)를 넣었지만 아래 세 번의 측정에서 한 번도 찍히지 않아 GC와 겹치는지는 확인하지 못했다 |
+| 4트랙이 가득 찬 조건 | `assets/songs/example_full.json`(노트 57개: DRUM 25, BASS 12, MELODY 16, FX 4, 100 BPM)을 불러와 3분(1200스텝). `scripts/lag_full.sh` |
+
+측정 결과 (모두 3분, n=1200, 누락 0):
+
+| 조건 | p50 | p95 | p99 | 최대 |
+|---|---|---|---|---|
+| 4트랙 가득, 변경 전 | 0.18ms | 0.75ms | 1.26ms | 1.62ms |
+| 4트랙 가득, 할당 줄인 뒤 | 0.18ms | 1.24ms | 3.51ms | 4.34ms |
+| 기존 조건(DRUM 녹음 중 메트로놈만), 변경 전 코드 | 0.07ms | 0.52ms | 0.90ms | 4.71ms |
+
+**결론**
+- 이번 세 번 모두 최대값이 5ms 아래다. M2에서 본 24.8ms·31.0ms는 **재현되지 않았다.** 우선순위는 이미 최고 수준이고 할당은 원인이 아니었다(GC 줄도 없었다). 그래서 줄였다고 말할 수 있는 개선은 없고, 변경 전후 차이(1.62 대 4.34ms)는 측정 잡음 범위로 본다.
+- 가장 그럴듯한 설명은 **에뮬레이터/호스트 스케줄링**이지만 확인하지 못했다. 24.8ms·31.0ms가 나온 두 번은 `scripts/check.sh` 전체 실행의 마지막 단계(앞선 UI 시험 직후)였다. 같은 조건(전체 check.sh 끝에서)을 다시 만들어 보는 것은 남아 있다.
+- 이 값은 엔진 스레드의 호출 지연뿐이고 SoundPool 출력 지연과 끊김은 재지 않는다. 4트랙 곡의 박자 흔들림·끊김은 여전히 **[귀]** 확인이 필요하다.
+- 다음에 다시 보이면: `adb logcat -d -s PJAM_LAG:W`에 `slow step`이 시각과 함께 남으니 같은 시각의 `art`/`AudioFlinger` 줄과 대조한다.
+
 ## 방향지시등 카메라 창 (2026-11-15 실측, M2 2번)
 방향지시등을 켜면 플랫폼(`ai.umos.car.evs/.CarEvsBlindSpotCameraPreviewActivity`)이 사각지대 카메라 창을 앱 위에 띄운다. `vc.sh turn BlinkLeft`/`BlinkRight`로 켜고 `dumpsys window`와 스크린샷으로 쟀다.
 - **위치·크기**: 앱 창 `[853,90][2535,1300]`의 **왼쪽 위 모서리**에 붙는다. 스크린샷 기준 약 **x 854~1606, y 90~513 (752×423px, 16:9)**, 즉 앱 폭의 약 45%, 앱 높이의 약 35%. `dumpsys`의 `frame=[1280,695][1280,695]`은 0×0이라 쓸 수 없고, 화면에서 잰 값이 기준이다(오차 ±2px). 닫기(X) 버튼이 창 왼쪽 위에 있다.

@@ -1,0 +1,324 @@
+{
+ "id": "example-full",
+ "name": "예시 곡 (4트랙)",
+ "createdAt": 0,
+ "bpm": 100,
+ "transpose": 0,
+ "soundPackId": "basic",
+ "tracks": [
+  {
+   "kind": "DRUM",
+   "notes": [
+    {
+     "step": 0,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 0,
+     "sampleId": "drum_kick",
+     "velocity": 1.0
+    },
+    {
+     "step": 2,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 4,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 6,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 6,
+     "sampleId": "drum_kick",
+     "velocity": 1.0
+    },
+    {
+     "step": 8,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 8,
+     "sampleId": "drum_kick",
+     "velocity": 1.0
+    },
+    {
+     "step": 8,
+     "sampleId": "drum_snare",
+     "velocity": 1.0
+    },
+    {
+     "step": 10,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 12,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 14,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 16,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 16,
+     "sampleId": "drum_kick",
+     "velocity": 1.0
+    },
+    {
+     "step": 18,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 20,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 22,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 22,
+     "sampleId": "drum_kick",
+     "velocity": 1.0
+    },
+    {
+     "step": 24,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 24,
+     "sampleId": "drum_kick",
+     "velocity": 1.0
+    },
+    {
+     "step": 24,
+     "sampleId": "drum_snare",
+     "velocity": 1.0
+    },
+    {
+     "step": 26,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 28,
+     "sampleId": "drum_clap",
+     "velocity": 1.0
+    },
+    {
+     "step": 28,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    },
+    {
+     "step": 30,
+     "sampleId": "drum_hihat",
+     "velocity": 1.0
+    }
+   ],
+   "muted": false
+  },
+  {
+   "kind": "BASS",
+   "notes": [
+    {
+     "step": 0,
+     "sampleId": "bass_1_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 3,
+     "sampleId": "bass_1_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 6,
+     "sampleId": "bass_1_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 8,
+     "sampleId": "bass_4_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 11,
+     "sampleId": "bass_4_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 14,
+     "sampleId": "bass_1_o1",
+     "velocity": 1.0
+    },
+    {
+     "step": 16,
+     "sampleId": "bass_5_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 19,
+     "sampleId": "bass_5_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 22,
+     "sampleId": "bass_5_o1",
+     "velocity": 1.0
+    },
+    {
+     "step": 24,
+     "sampleId": "bass_4_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 27,
+     "sampleId": "bass_4_o2",
+     "velocity": 1.0
+    },
+    {
+     "step": 30,
+     "sampleId": "bass_4_o2",
+     "velocity": 1.0
+    }
+   ],
+   "muted": false
+  },
+  {
+   "kind": "MELODY",
+   "notes": [
+    {
+     "step": 0,
+     "sampleId": "mel_3",
+     "velocity": 1.0
+    },
+    {
+     "step": 2,
+     "sampleId": "mel_5",
+     "velocity": 1.0
+    },
+    {
+     "step": 4,
+     "sampleId": "mel_4",
+     "velocity": 1.0
+    },
+    {
+     "step": 6,
+     "sampleId": "mel_2",
+     "velocity": 1.0
+    },
+    {
+     "step": 8,
+     "sampleId": "mel_3",
+     "velocity": 1.0
+    },
+    {
+     "step": 10,
+     "sampleId": "mel_6",
+     "velocity": 1.0
+    },
+    {
+     "step": 12,
+     "sampleId": "mel_5",
+     "velocity": 1.0
+    },
+    {
+     "step": 14,
+     "sampleId": "mel_4",
+     "velocity": 1.0
+    },
+    {
+     "step": 16,
+     "sampleId": "mel_0",
+     "velocity": 1.0
+    },
+    {
+     "step": 18,
+     "sampleId": "mel_2",
+     "velocity": 1.0
+    },
+    {
+     "step": 20,
+     "sampleId": "mel_3",
+     "velocity": 1.0
+    },
+    {
+     "step": 22,
+     "sampleId": "mel_5",
+     "velocity": 1.0
+    },
+    {
+     "step": 24,
+     "sampleId": "mel_4",
+     "velocity": 1.0
+    },
+    {
+     "step": 26,
+     "sampleId": "mel_3",
+     "velocity": 1.0
+    },
+    {
+     "step": 28,
+     "sampleId": "mel_2",
+     "velocity": 1.0
+    },
+    {
+     "step": 30,
+     "sampleId": "mel_1",
+     "velocity": 1.0
+    }
+   ],
+   "muted": false
+  },
+  {
+   "kind": "FX",
+   "notes": [
+    {
+     "step": 0,
+     "sampleId": "fx_impact",
+     "velocity": 1.0
+    },
+    {
+     "step": 12,
+     "sampleId": "fx_zap",
+     "velocity": 1.0
+    },
+    {
+     "step": 16,
+     "sampleId": "fx_riser",
+     "velocity": 1.0
+    },
+    {
+     "step": 24,
+     "sampleId": "fx_sweep",
+     "velocity": 1.0
+    }
+   ],
+   "muted": false
+  }
+ ],
+ "inputSummary": {
+  "BRAKE": 6,
+  "TURN_LEFT": 2,
+  "TURN_RIGHT": 16
+ }
+}

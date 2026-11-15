@@ -30,7 +30,10 @@ class AppContainer(context: Context) {
         sampler,
         log = { Log.i("PJAM_ENG", it) },
         onStepFired = { step, scheduled ->
-            stepLag.onStep(step, SystemClock.elapsedRealtimeNanos() - scheduled)
+            val lag = SystemClock.elapsedRealtimeNanos() - scheduled
+            stepLag.onStep(step, lag)
+            // 10ms 넘게 늦은 스텝은 GC 로그(art)와 맞춰 볼 수 있게 따로 남긴다. 드물게만 찍히므로 오차를 키우지 않는다.
+            if (lag > SLOW_STEP_NANOS) Log.w("PJAM_LAG", "slow step=$step lag=${lag / 1_000_000.0}ms")
             if (++lagSteps % 200 == 0) Log.i("PJAM_LAG", stepLag.summary().toString())
         },
     )
@@ -81,7 +84,25 @@ class AppContainer(context: Context) {
 
     init {
         runner.start()
+        startDebugExample(context)
         inputManager.start()
         try { SignalProbe(context).start() } catch (t: Throwable) { Log.w("PJAM_V2", "probe start failed: $t") } // 디버그에서만 동작
     }
+
+    /**
+     * 디버그 전용 시험 훅: `run-as app.pjam.studio touch files/load_example` 가 있으면 시작할 때 4트랙이 꽉 찬 예시 곡을 불러와 재생한다
+     * (3분 최대 지연 측정과 소리 확인용). release 에서는 동작하지 않는다.
+     */
+    private fun startDebugExample(context: Context) {
+        if (!BuildConfig.DEBUG || !java.io.File(context.filesDir, "load_example").exists()) return
+        val song = app.pjam.studio.data.BundledSongs.load(context, app.pjam.studio.data.BundledSongs.EXAMPLE_FILE) ?: return
+        Thread({
+            while (!sampler.allLoaded) Thread.sleep(50)
+            engine.send(EngineCommand.LoadSong(song))
+            engine.send(EngineCommand.Start)
+            Log.i("PJAM_LAG", "debug example started: ${song.tracks.sumOf { it.notes.size }} notes")
+        }, "pjam-debug-example").start()
+    }
+
+    private companion object { const val SLOW_STEP_NANOS = 10_000_000L }
 }
