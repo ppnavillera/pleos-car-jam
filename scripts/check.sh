@@ -136,6 +136,23 @@ else
   skip gear-regression "스튜디오 화면 또는 스크립트 없음"
 fi
 
+# ---------- 4d. 공조 → 트랙, 내 차 장비, 카메라 창 겹침 (T2-5, T2-6, T2-7) ----------
+if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -f "$ROOT/scripts/hvac_equipment.sh" ] && [ -x "$ROOT/scripts/vc.sh" ]; then
+  bash "$ROOT/scripts/hvac_equipment.sh" "$DEV" "$OUT" >"$OUT/hvac-equipment.log" 2>&1
+  HE=$?
+  grep -E '^(PASS|FAIL)' "$OUT/hvac-equipment.log"
+  [ $HE -eq 0 ] || FAILED=1
+else
+  skip hvac-equipment "스튜디오 화면 또는 스크립트 없음"
+fi
+
+# ---------- 4e. 차량 입력 없이 화면만으로 4트랙 + 창 크기 변경 (T2-3, T2-8, 기획서 7.1 5번·7번) ----------
+if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -f "$ROOT/scripts/e2e_four_tracks.sh" ]; then
+  if bash "$ROOT/scripts/e2e_four_tracks.sh" "$DEV" "$OUT" >"$OUT/e2e-four-tracks.log" 2>&1; then pass e2e-four-tracks-screen-only; else fail e2e-four-tracks-screen-only "$OUT/e2e-four-tracks.log"; fi
+else
+  skip e2e-four-tracks-screen-only "스튜디오 화면 또는 스크립트 없음"
+fi
+
 # ---------- 5. 크래시 검사 ----------
 A logcat -d >"$OUT/logcat.txt" 2>&1
 if grep -E "FATAL EXCEPTION" -A3 "$OUT/logcat.txt" | grep -q "$PKG"; then fail no-fatal-exception "$OUT/logcat.txt"; else pass no-fatal-exception; fi

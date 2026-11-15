@@ -5,7 +5,6 @@
       릴리스 매니페스트에는 실제로 쓰는 도메인의 권한만 둔다(T4-4). 승인되지 않은 권한을 선언하면 심사에서 떨어질 수 있다(계획서 1.3).
     -->
     <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
-    <uses-permission android:name="pleos.car.permission.CAR_CLIMATE" />
     <uses-permission android:name="pleos.car.permission.CAR_WINDOWS" />
     <uses-permission android:name="pleos.car.permission.CAR_ENERGY" />
 </manifest>

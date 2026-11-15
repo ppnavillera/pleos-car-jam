@@ -17,6 +17,8 @@ import org.junit.Test
 class InputSourceManagerTest {
     private class FakeVehicle(private val onStart: () -> Unit = {}) : VehicleInputSource {
         override val events: SharedFlow<InputEvent> = MutableSharedFlow()
+        override val activity: SharedFlow<InputKind> = MutableSharedFlow()
+        override val hvacPower: StateFlow<Boolean?> = MutableStateFlow(null)
         override val support: StateFlow<Map<InputKind, SupportState>> = MutableStateFlow(mapOf(InputKind.BRAKE to SupportState.UNKNOWN))
         var started = false; var stopped = false
         override fun start() { onStart(); started = true }
@@ -82,6 +84,8 @@ class InputSourceManagerTest {
         m.start(); m.stop()
         val throwingStop = object : VehicleInputSource {
             override val events: SharedFlow<InputEvent> = MutableSharedFlow()
+            override val activity: SharedFlow<InputKind> = MutableSharedFlow()
+            override val hvacPower: StateFlow<Boolean?> = MutableStateFlow(null)
             override val support: StateFlow<Map<InputKind, SupportState>> = MutableStateFlow(emptyMap())
             override fun start() = Unit
             override fun stop() { throw IllegalStateException("release failed") }

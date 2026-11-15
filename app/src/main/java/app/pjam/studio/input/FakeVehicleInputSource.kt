@@ -14,6 +14,10 @@ class FakeVehicleInputSource(private val clock: Clock) : VehicleInputSource {
     private val _support = MutableStateFlow(InputKind.entries.associateWith { SupportState.SUPPORTED })
     override val support: StateFlow<Map<InputKind, SupportState>> = _support
 
+    private val _activity = MutableSharedFlow<InputKind>(extraBufferCapacity = 64)
+    override val activity: SharedFlow<InputKind> = _activity
+    override val hvacPower: StateFlow<Boolean?> = MutableStateFlow(null)
+
     override fun start() = Unit
     override fun stop() = Unit
 
@@ -23,5 +27,16 @@ class FakeVehicleInputSource(private val clock: Clock) : VehicleInputSource {
     fun level(source: LevelSource, normalized: Float) = emit(InputEvent.Level(source, normalized, clock.nanos()))
     fun cycle(source: CycleSource) = emit(InputEvent.Cycle(source, clock.nanos()))
 
-    fun emit(event: InputEvent): Boolean = _events.tryEmit(event)
+    fun emit(event: InputEvent): Boolean {
+        _activity.tryEmit(kindOf(event))
+        return _events.tryEmit(event)
+    }
+
+    private fun kindOf(e: InputEvent): InputKind = when (e) {
+        is InputEvent.Trigger -> if (e.source == TriggerSource.BRAKE) InputKind.BRAKE else InputKind.TURN_SIGNAL
+        is InputEvent.Zone -> InputKind.STEERING
+        is InputEvent.Toggle -> HvacAssignment.kindOf(e.source)
+        is InputEvent.Level -> when (e.source) { LevelSource.FAN_SPEED -> InputKind.FAN_SPEED; LevelSource.TEMPERATURE -> InputKind.TEMPERATURE; LevelSource.WINDOW -> InputKind.WINDOW }
+        is InputEvent.Cycle -> if (e.source == CycleSource.WIPER) InputKind.WIPER else InputKind.DRIVE_MODE
+    }
 }

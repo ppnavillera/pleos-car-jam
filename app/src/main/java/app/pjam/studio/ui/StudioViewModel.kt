@@ -9,7 +9,10 @@ import app.pjam.studio.engine.EngineState
 import app.pjam.studio.engine.PlayMapper
 import app.pjam.studio.engine.TrackKind
 import app.pjam.studio.engine.TrackStatus
+import app.pjam.studio.input.HvacAssignment
 import app.pjam.studio.input.InputEvent
+import app.pjam.studio.input.InputKind
+import app.pjam.studio.input.SupportState
 import app.pjam.studio.input.SteeringZone
 import app.pjam.studio.input.ToggleSource
 import app.pjam.studio.input.TriggerSource
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -35,9 +39,36 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
     val inputBar: StateFlow<InputBarState?> = _inputBar.asStateFlow()
     private var seq = 0
 
+    /** 공조 버튼 → 트랙 배정 (기획서 6.3). 차량 신호가 없으면 비어 있다(화면 스위치만). */
+    val toggleAssignment: StateFlow<Map<ToggleSource, TrackKind>> = run {
+        val s = c.inputManager.vehicleSource?.support
+        if (s == null) MutableStateFlow(emptyMap<ToggleSource, TrackKind>())
+        else s.map { HvacAssignment.assign(it) }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyMap())
+    }
+
+    /** 실제 차량 소스의 항목별 지원 상태 ("내 차 장비"). 소스가 없으면 비어 있다. */
+    val vehicleSupport: StateFlow<Map<InputKind, SupportState>> = c.inputManager.vehicleSource?.support ?: MutableStateFlow(emptyMap())
+    val hasVehicleSource: Boolean get() = c.inputManager.vehicleSource != null
+    val hvacPower: StateFlow<Boolean?> = c.inputManager.vehicleSource?.hvacPower ?: MutableStateFlow(null)
+
+    /** 항목별 마지막 원시 콜백 도착 번호. 값이 바뀌면 "내 차 장비"의 그 줄이 반짝인다. */
+    private val _activity = MutableStateFlow<Map<InputKind, Int>>(emptyMap())
+    val activity: StateFlow<Map<InputKind, Int>> = _activity.asStateFlow()
+    private var activitySeq = 0
+
+    private val _showEquipment = MutableStateFlow(false)
+    val showEquipment: StateFlow<Boolean> = _showEquipment.asStateFlow()
+    fun openEquipment(open: Boolean) { _showEquipment.value = open }
+
     init {
         viewModelScope.launch {
             c.inputSources.map<_, SharedFlow<InputEvent>> { it.events }.merge().collect { onVehicleInput(it) }
+        }
+        viewModelScope.launch {
+            c.inputSources.map<_, SharedFlow<InputKind>> { it.activity }.merge().collect { kind ->
+                android.util.Log.i("PJAM_EQUIP", "flash $kind")
+                _activity.value = _activity.value + (kind to ++activitySeq)
+            }
         }
     }
 
@@ -61,6 +92,13 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
         show("화면 패드 → ${Labels.sample(id)}")
     }
 
+    /** 핸들 대체 화면 3버튼 (기획서 6.3): 소리는 내지 않고 BASS의 현재 음 / MELODY의 커서만 옮긴다. */
+    fun onScreenZone(zone: SteeringZone) {
+        if (!c.guard.allowInput()) return
+        mapper.onZone(_selected.value, zone)
+        show("화면 버튼 → ${Labels.zone(_selected.value, zone)}")
+    }
+
     fun onVehicleInput(e: InputEvent) {
         // 플랫폼이 화면을 가려도 SDK 콜백은 계속 온다. 잠금·백그라운드 중에는 소리도 포커스도 만들지 않는다.
         if (!c.guard.allowInput()) { android.util.Log.i("PJAM_LOCK", "input dropped (inactive): $e"); return }
@@ -79,12 +117,10 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
                 show("핸들 $z")
             }
             is InputEvent.Toggle -> {
-                val target = when (e.source) {
-                    ToggleSource.AC -> TrackKind.DRUM; ToggleSource.AUTO -> TrackKind.BASS
-                    ToggleSource.RECIRCULATION -> TrackKind.MELODY; ToggleSource.DEFROSTER -> TrackKind.FX
-                }
+                val target = toggleAssignment.value[e.source]
+                if (target == null) { android.util.Log.i("PJAM_INPUT", "toggle ${e.source} 배정 없음(화면 스위치만)"); return }
                 toggleMute(target)
-                show("${Labels.hvac(target)} → ${Labels.track(target)} 켜기/끄기")
+                show("${Labels.toggle(e.source)} → ${Labels.track(target)} 켜기/끄기")
             }
             is InputEvent.Level -> show("${e.source} ${"%.2f".format(e.normalized)}")
             is InputEvent.Cycle -> show("${e.source}")

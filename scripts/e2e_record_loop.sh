@@ -57,19 +57,12 @@ WRAPS=$(grep -o "LOOP wrap n=[0-9]*" "$OUT/e2e-engine.log" | sed 's/.*=//' | awk
 
 # ---- P8: DRUM 이 반복되는 중에 BASS 를 녹음해도 DRUM 이 유지되는지 ----
 read -r BX BY < <(center "$OUT/e2e-0-idle.xml" track_card_BASS) || { echo "track_card_BASS 없음"; exit 1; }
-# BASS 패드는 3개: DRUM 패드 줄(왼쪽 끝~오른쪽 끝)을 3등분한 중심으로 계산한다
-read -r P1X P2X P3X < <(python3 -I - "$OUT/e2e-0-idle.xml" <<'PY'
-import re, sys
-xml = open(sys.argv[1], encoding="utf-8").read()
-def b(desc):
-    m = re.search(r'content-desc="%s"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"' % desc, xml)
-    return tuple(map(int, m.groups()))
-l = b("pad_drum_kick")[0]; r = b("pad_drum_clap")[2]
-gap = 12; w = (r - l - 2 * gap) / 3
-print(*[int(l + w / 2 + i * (w + gap)) for i in range(3)])
-PY
-)
-A shell input tap "$BX" "$BY"; sleep 0.5
+A shell input tap "$BX" "$BY"; sleep 0.8
+# BASS 를 고르면 패드 줄 위에 핸들 대체 3버튼이 생겨 패드 위치가 바뀐다 → 다시 덤프해서 BASS 패드 좌표를 읽는다
+dump_retry "$OUT/e2e-bass.xml" || { echo "BASS 선택 후 UI 덤프 실패"; exit 1; }
+read -r P1X KY < <(center "$OUT/e2e-bass.xml" pad_bass_1_o2) || { echo "pad_bass_1_o2 없음"; exit 1; }
+read -r P2X _ < <(center "$OUT/e2e-bass.xml" pad_bass_4_o2) || { echo "pad_bass_4_o2 없음"; exit 1; }
+read -r P3X _ < <(center "$OUT/e2e-bass.xml" pad_bass_5_o2) || { echo "pad_bass_5_o2 없음"; exit 1; }
 A logcat -c
 A shell input tap "$RX" "$RY"
 # 녹음이 실제로 시작될 때까지(최대 25초) 기다린다. 다음 루프 시작점 + 1마디 메트로놈

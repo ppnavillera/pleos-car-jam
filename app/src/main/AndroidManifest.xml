@@ -11,6 +11,8 @@
     <!-- 차량 읽기 권한: SDK 2.3.2의 @RequiresPermission으로 확인한 것만 (FINDINGS V1). 제어(set) 권한은 쓰지 않는다. -->
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
     <uses-permission android:name="pleos.car.permission.CAR_LIGHTS" />
+    <!-- 공조 4종 + 전원 읽기(T2-5). 창문·와이퍼·충전은 아직 쓰지 않으므로 CAR_WINDOWS·CAR_ENERGY는 선언하지 않는다. -->
+    <uses-permission android:name="pleos.car.permission.CAR_CLIMATE" />
 
     <application
         android:name=".PJamApp"

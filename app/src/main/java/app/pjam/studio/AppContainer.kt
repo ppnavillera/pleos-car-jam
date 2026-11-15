@@ -58,8 +58,14 @@ class AppContainer(context: Context) {
     /**
      * 실제 SDK 입력과 기어 읽기. 만들거나 시작하다 Throwable이 나도 앱은 계속 돌고 화면 조작만 된다 (T1-12).
      */
+    /** 디버그 전용 시험 훅: `run-as app.pjam.studio touch files/screen_only`가 있으면 차량 입력 없이(화면 조작만) 시작한다 (7.1 "차량 입력이 하나도 지원되지 않는 상황"). */
+    private val forceScreenOnly = BuildConfig.DEBUG && java.io.File(context.filesDir, "screen_only").exists()
+
     val inputManager = InputSourceManager(
-        vehicleFactory = { PleosVehicleInputSource(context, clock) },
+        vehicleFactory = {
+            if (forceScreenOnly) throw IllegalStateException("debug flag files/screen_only: vehicle input disabled")
+            PleosVehicleInputSource(context, clock)
+        },
         gearFactory = { PleosGearSource(context, guard) },
         gearSink = guard,
         log = { Log.w("PJAM_PLEOS", it) },
