@@ -24,6 +24,13 @@ run_gradle() { # name task...
 }
 run_gradle lint+test+assemble lintDebug testDebugUnitTest assembleDebug
 
+# release 서명 키가 있을 때만 release 빌드를 만든다(키는 저장소 밖: PJAM_KEYSTORE_PROPERTIES, 루트 keystore.properties, ~/.pjam-signing/)
+HAVE_KEY=0
+for f in "${PJAM_KEYSTORE_PROPERTIES:-}" "$ROOT/keystore.properties" "$HOME/.pjam-signing/keystore.properties"; do
+  [ -n "$f" ] && [ -f "$f" ] && HAVE_KEY=1
+done
+if [ $HAVE_KEY -eq 1 ]; then run_gradle release-build assembleRelease; else skip release-build "서명 키 없음(README의 키 생성 참고)"; fi
+
 APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
 [ -f "$APK" ] || { fail apk-exists "$APK"; exit 1; }
 
@@ -38,11 +45,18 @@ fi
 DEV=$(adb devices | awk 'NR>1 && $2=="device"{print $1; exit}')
 if [ -z "${DEV:-}" ]; then
   skip install "연결된 에뮬레이터 없음"; skip smoke "연결된 에뮬레이터 없음"; skip e2e-record-loop "연결된 에뮬레이터 없음"
-  [ $FAILED -eq 0 ] && exit 0 || exit 1
+  
+[ $FAILED -eq 0 ] && exit 0 || exit 1
 fi
 A() { adb -s "$DEV" "$@"; }
 
-if A install -r -t "$APK" >"$OUT/install.log" 2>&1; then pass install; else fail install "$OUT/install.log"; fi
+install_debug() {
+  A install -r -t "$APK" >"$OUT/install.log" 2>&1 && return 0
+  # 같은 applicationId 의 release(다른 서명)가 깔려 있으면 덮어쓸 수 없다 → 지우고 다시 설치
+  if grep -q "INSTALL_FAILED_UPDATE_INCOMPATIBLE" "$OUT/install.log"; then A uninstall "$PKG" >/dev/null 2>&1; A install -t "$APK" >"$OUT/install.log" 2>&1 && return 0; fi
+  return 1
+}
+if install_debug; then pass install; else fail install "$OUT/install.log"; fi
 
 dump_ui() { A exec-out uiautomator dump /dev/tty 2>/dev/null | sed 's/UI hierarchy dumped to.*//' ; }
 
@@ -153,9 +167,39 @@ else
   skip e2e-four-tracks-screen-only "스튜디오 화면 또는 스크립트 없음"
 fi
 
+# ---------- 4f. 3분 연속 재생 (T2-9, 기획서 7.1 8번): 스텝 호출 오차 p95 < 15ms, 누락 0 ----------
+# 190초 걸린다. 빨리 돌릴 때는 SKIP_LONG=1.
+if [ "${SKIP_LONG:-0}" = "1" ]; then
+  skip lag-3min "SKIP_LONG=1"
+elif [ -f "$ROOT/scripts/lag_run.sh" ]; then
+  bash "$ROOT/scripts/lag_run.sh" "$DEV" 190 >"$OUT/lag3min.log" 2>&1
+  LAST=$(grep -E "^n=" "$OUT/lag3min.log" | tail -1)
+  N=$(echo "$LAST" | sed -n 's/.*n=\([0-9]*\).*/\1/p'); P95=$(echo "$LAST" | sed -n 's/.*p95=\([0-9.]*\)ms.*/\1/p'); MISSED=$(echo "$LAST" | sed -n 's/.*missed=\([0-9]*\).*/\1/p')
+  if [ -n "$LAST" ] && [ "${N:-0}" -ge 1000 ] && [ "${MISSED:-1}" -eq 0 ] && python3 -c "import sys; sys.exit(0 if float('${P95:-99}') < 15 else 1)"; then
+    pass lag-3min "$LAST"
+  else
+    fail lag-3min "스텝 오차 p95<15ms·누락 0·1000스텝 이상이 아님: '${LAST:-로그 없음}' ($OUT/lag3min.log)"
+  fi
+else
+  skip lag-3min "scripts/lag_run.sh 없음"
+fi
+
 # ---------- 5. 크래시 검사 ----------
 A logcat -d >"$OUT/logcat.txt" 2>&1
 if grep -E "FATAL EXCEPTION" -A3 "$OUT/logcat.txt" | grep -q "$PKG"; then fail no-fatal-exception "$OUT/logcat.txt"; else pass no-fatal-exception; fi
 if A logcat -d -b crash 2>/dev/null | grep -q "$PKG"; then fail no-crash-buffer "adb logcat -b crash"; else pass no-crash-buffer; fi
+
+# ---------- 6. release APK 설치·실행 스모크 (T2-10, 기획서 7.1 1번) ----------
+# 마지막에 한다: release 는 debug 와 서명이 달라 debug 를 지우고 설치하므로, 끝나면 debug 를 다시 깔아 둔다.
+if [ -f "$ROOT/app/build/outputs/apk/release/app-release.apk" ] && [ $HAVE_KEY -eq 1 ]; then
+  bash "$ROOT/scripts/release_smoke.sh" "$DEV" "$OUT" >"$OUT/release-smoke.log" 2>&1
+  RS=$?
+  grep -E '^(PASS|FAIL)' "$OUT/release-smoke.log"
+  [ $RS -eq 0 ] || FAILED=1
+  A uninstall "$PKG" >/dev/null 2>&1; install_debug >/dev/null 2>&1 || true
+else
+  skip release-smoke "release APK 없음(서명 키 없음)"
+fi
+
 
 [ $FAILED -eq 0 ] && exit 0 || exit 1

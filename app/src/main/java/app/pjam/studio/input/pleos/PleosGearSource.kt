@@ -84,15 +84,20 @@ class PleosGearSource(
         main.postDelayed({ vehicle?.let { if (!sdkValue) trySdk(it) } }, 1000)
     }
 
+    /** Binder 스레드 콜백. 본문에서 예외가 나도 프로세스가 죽지 않게 감싼다(T2-9). 마지막으로 알던 상태는 그대로 둔다. */
     private fun onSdkGear(g: VehicleGear?, src: String) {
-        val kind = when (g) {
-            VehicleGear.GEAR_PARK -> GearKind.PARK
-            VehicleGear.GEAR_UNKNOWN, null -> GearKind.UNKNOWN
-            else -> GearKind.NOT_PARK
+        try {
+            val kind = when (g) {
+                VehicleGear.GEAR_PARK -> GearKind.PARK
+                VehicleGear.GEAR_UNKNOWN, null -> GearKind.UNKNOWN
+                else -> GearKind.NOT_PARK
+            }
+            Log.i(TAG, "sdk gear=$g → $kind src=$src thread=${Thread.currentThread().name}")
+            if (!sdkValue && kind != GearKind.UNKNOWN) { sdkValue = true; sink.onMethod(GearMethod.SDK_GEAR) }
+            if (sdkValue) sink.onGear(kind, src)
+        } catch (t: Throwable) {
+            Log.w(TAG, "sdk gear callback failed: $t")
         }
-        Log.i(TAG, "sdk gear=$g → $kind src=$src thread=${Thread.currentThread().name}")
-        if (!sdkValue && kind != GearKind.UNKNOWN) { sdkValue = true; sink.onMethod(GearMethod.SDK_GEAR) }
-        if (sdkValue) sink.onGear(kind, src)
     }
 
     private fun decideMethod() {

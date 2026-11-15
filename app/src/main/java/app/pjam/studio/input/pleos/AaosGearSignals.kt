@@ -32,21 +32,27 @@ class AaosGearSignals(
         private set
 
     private val uxListener = CarUxRestrictionsManager.OnUxRestrictionsChangedListener { r ->
-        sink.onUx(r.isRequiresDistractionOptimization, "ux-listener")
-        Log.i(TAG, "ux changed requiresDO=${r.isRequiresDistractionOptimization} active=${r.activeRestrictions} thread=${Thread.currentThread().name}")
+        try {
+            sink.onUx(r.isRequiresDistractionOptimization, "ux-listener")
+            Log.i(TAG, "ux changed requiresDO=${r.isRequiresDistractionOptimization} active=${r.activeRestrictions} thread=${Thread.currentThread().name}")
+        } catch (t: Throwable) { Log.w(TAG, "ux callback failed: $t") }
     }
 
     private val cpmCallback = object : CarPropertyManager.CarPropertyEventCallback {
         override fun onChangeEvent(value: CarPropertyValue<*>) {
-            Log.i(TAG, "cpm event prop=0x${Integer.toHexString(value.propertyId)} value=${value.value} status=${value.status} thread=${Thread.currentThread().name}")
-            if (value.propertyId == GEAR_SELECTION && value.status == CarPropertyValue.STATUS_AVAILABLE) onCpmGear(value.value as? Int, "cpm-listener")
+            try {
+                Log.i(TAG, "cpm event prop=0x${Integer.toHexString(value.propertyId)} value=${value.value} status=${value.status} thread=${Thread.currentThread().name}")
+                if (value.propertyId == GEAR_SELECTION && value.status == CarPropertyValue.STATUS_AVAILABLE) onCpmGear(value.value as? Int, "cpm-listener")
+            } catch (t: Throwable) { Log.w(TAG, "cpm callback failed: $t") }
         }
         override fun onErrorEvent(propertyId: Int, zone: Int) { Log.w(TAG, "cpm error prop=0x${Integer.toHexString(propertyId)} zone=$zone") }
     }
 
     fun start() {
         Car.createCar(context.applicationContext, null, Car.CAR_WAIT_TIMEOUT_DO_NOT_WAIT) { c, ready ->
-            if (ready) { car = c; setupUx(c); setupCpm(c) } else Log.w(TAG, "car service not ready")
+            try {
+                if (ready) { car = c; setupUx(c); setupCpm(c) } else Log.w(TAG, "car service not ready")
+            } catch (t: Throwable) { Log.w(TAG, "car ready callback failed: $t") }
         }
     }
 

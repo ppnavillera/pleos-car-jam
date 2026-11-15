@@ -29,6 +29,7 @@ Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + �
 | HVAC.checkHvacAc/Auto/Recirculation/DefrosterCapabilities | onComplete:(CapabilityConfig, List<Area>)->Unit, onFailed (Function1 오버로드도 있음) | 람다 | A/C·AUTO·내기는 `List<SeatArea>`, 성에 제거는 `List<WindowArea>`. **돌려받은 영역을 그대로 get/register에 넘겨야 한다**(아래 주의) | 있음 | `pleos.car.permission.CAR_CLIMATE` |
 | HVAC.getHvacAcState / getHvacAutoState / getHvacRecirculationState / getHvacDefrosterState | (area, onComplete:(Boolean?)->Unit, onFailed) | 람다 | Boolean. 내기순환은 `getHvacRecirculationState`(AutoRecirculation은 별개 속성) | SeatArea / 성에 제거는 WindowArea | CAR_CLIMATE |
 | HVAC.registerHvacAcState / AutoState / RecirculationState / DefrosterState | (area, listener) | `HvacAcStateListener.onHvacAcStateUpdated(Boolean?)`, `HvacAutoStateListener.onHvacAutoStateUpdated`, `HvacRecirculationStateListener.onHvacAutoRecirculationStateUpdated`(이름이 AutoRecirculation), `HvacDefrosterStateListener.onHvacDefrosterStateUpdated` | Boolean? | 위와 같음 | CAR_CLIMATE |
+| HVAC.checkHvacPowerCapabilities / getHvacPowerState / registerHvacPowerState / unregister… | (CapabilityConfig, List<SeatArea>) / (area, onComplete:(Boolean?)) / `HvacPowerStateListener.onHvacPowerStateUpdated(Boolean?)` | 람다/리스너 | Boolean. capability READ_WRITE, SeatArea 1개 | SeatArea | CAR_CLIMATE |
 | HVAC.checkHvacFanSpeedCapabilities / getHvacFanSpeed / registerHvacFanSpeed | onComplete:(CapabilityConfig, Map<SeatArea, AreaBounds<Int>>)->Unit / (area, onComplete:(Int?)->Unit) / `HvacFanSpeedListener.onHvacFanSpeedUpdated(Int?)` | 람다/리스너 | Int. 실측 범위 1..8 (값 0도 콜백으로 옴) | SeatArea | CAR_CLIMATE |
 | HVAC.checkHvacTemperatureCapabilities / getHvacTemperature / registerHvacTemperature | (CapabilityConfig, Map<SeatArea, AreaBounds<Float>>) / (area, TemperatureUnit, onComplete:(Float?)) / `HvacTemperatureListener.onHvacTemperatureUpdated(Float?)` (2값짜리 `HvacTemperatureValueListener` 오버로드도 있음) | 람다/리스너 | Float(°C, `TemperatureUnit.CELSIUS`). 실측 범위 15.0..30.0, 0.5 단위 | SeatArea(운전석 ROW_1_LEFT로 성공) | CAR_CLIMATE |
 | Window.checkWindowPositionCapabilities / getCurrentWindowPosition / registerWindowPosition | (CapabilityConfig, Map<WindowArea, AreaBounds<Int>>) / (area, onComplete:(Int?)) / `WindowPositionListener.onWindowPositionUpdated(Int?)` | 람다/리스너 | Int. 실측 **0..10** (Virtual Console은 0..100%) | WindowArea(`WindowValue.ROW_1_LEFT` 등) | `pleos.car.permission.CAR_WINDOWS` |
@@ -167,6 +168,32 @@ Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + �
 - 결과: **p50 0.16ms, p95 0.74ms, p99 1.19ms, 최대 1.36ms, 누락 스텝 0.** 게이트 G2(p95 < 15ms) 통과 → **SoundPoolSampler 유지, MixerSampler 교체 불필요.**
 - **3분 연속(T2-9, 190초, 1200스텝, `scripts/lag_run.sh`)**: p50 0.25ms, **p95 0.79ms**, p99 1.25ms, **최대 8.26ms**(처음 200스텝 안의 한 번, 이후 증가 없음), **누락 스텝 0** → T2-9의 "p95 < 15ms, 누락 0" 충족. 최대값 8.26ms는 게이트(15ms) 이내지만 귀로는 안 들릴 수준인지 확인하지 못했다.
 - 한계: 이 값은 "엔진이 늦게 깨어난 정도"다. SoundPool 내부 버퍼링과 오디오 출력 지연은 포함하지 않는다(그건 귀로 확인해야 한다, [수동]). 3분 연속 측정은 T2-9에서 같은 도구로 한다.
+
+## M2 실측 (2026-11-15, T2-5·T2-6·T2-7·T2-9)
+
+**공조 4종 + 전원 (T2-5)**
+- 앱이 SDK로 읽는다: A/C·AUTO·내기순환(영역 `SeatArea` 1개), 성에 제거(capability가 `WindowArea` 2개를 돌려줌 → 앞유리를 포함한 영역을 고른다, 없으면 첫 영역), 전원(`SeatArea` 1개). 모두 READ_WRITE로 지원, 영역은 capability가 준 것을 그대로 get/register에 넘겨 성공했다. `scripts/hvac_equipment.sh`가 Virtual Console(`vc.sh put /vehicle/hvac ...`) 변경 → `PJAM_INPUT "A/C → DRUM 켜기/끄기"` 등과 카드 스위치(`switch_<트랙>_on/off`)까지 확인한다. 같은 값으로 다시 쓰면 뒤집히지 않는다.
+- **전원 Off→On은 다른 공조 콜백을 일으키지 않았다**(전원만 바꿔 PJAM_SIG에 A/C·AUTO 등이 오는지 봄). 그래서 "전원이 바뀔 때 토글 기준값을 다시 잡는" 처리는 넣지 않았다.
+- **Power가 꺼져 있어도 A/C 콜백은 왔다**(전원 Off 상태에서 `ac=false` → 콜백 도착). 이전 V2 기록("Power가 꺼져 있으면 값을 바꿔도 앱에 콜백이 오지 않았다")과 다르다. 앱 시작 시점의 상태 차이일 수 있으나 원인은 확인하지 못했다. 그래서 전원이 꺼져 있으면 "내 차 장비"에 "신호가 안 올 수 있어요"로 사유를 보여 준다(보수적).
+- **Virtual Console HVAC 값이 시험 중 저절로 바뀐다.** 모든 공조 값을 끄면 `power_on`이 `false`로 돌아가 있는 것을 여러 번 봤다(예: 전원 On·나머지 Off로 PUT한 뒤 몇 초 뒤 `power_on=false`). 시험 스크립트는 전원 On → Off 전환을 명시적으로 만들어서 확인한다.
+- 권한: release 매니페스트에 `pleos.car.permission.CAR_CLIMATE`만 추가했다(창문·와이퍼·충전은 아직 안 써서 `CAR_WINDOWS`·`CAR_ENERGY` 미선언). `android.car.permission.CAR_POWERTRAIN`은 사용자 결정으로 릴리스에 넣지 않는다(PLAN_CHANGES).
+
+**내 차 장비 (T2-7)**
+- 줄 반짝임은 매핑된 이벤트가 아니라 SDK 원시 콜백(`PleosVehicleInputSource.activity`)을 기준으로 한다(핸들이 같은 구간 안에서 움직여도 반짝임). 확인은 `PJAM_EQUIP flash <항목>` 로그로 하고, 반짝이는 모양은 [귀·눈] 확인 대기.
+- 창문·와이퍼·풍량·온도는 이번 버전에서 SDK를 호출하지 않고 "이번 버전에서는 안 써요 · 화면 조작으로 대체"로 표시한다. 드라이브 모드도 구독하지 않는다(사용자 결정).
+
+**화면 배치 (T2-6)**
+- 넓은 배치(앱 폭 ≥ 1400dp, 이 에뮬레이터 전체 1682dp)는 두 열: 왼쪽 열 위쪽 744×430dp는 카메라 안전 구역(제목·안내 글자만), 그 밖에 입력 표시줄·패드, 오른쪽 열에 재생·녹음·템포 버튼과 트랙 카드 4개. `check.sh`의 `camera-zone-no-overlap`가 입력 표시줄·패드·카드·스위치·버튼 노드 bounds와 카메라 창 사각형(x 854~1606, y 90~513)의 교집합이 0인지 확인한다. **좁은 배치(< 1400dp)는 한 열 + 세로 스크롤이고 카메라 창을 피하지 않는다**(좁은 창에서 카메라 창 크기를 측정하지 못했다).
+- 좁은 창 시험: 에뮬레이터 `wm density`를 올려 앱 폭을 dp로 줄였다. `PJAM_LAYOUT` 임시 로그로 160dpi 1682dp → wide, 240dpi 1121dp → narrow, 200dpi 1346dp → narrow, 320dpi 840dp → narrow를 확인했고, 320dpi 스크린샷에서 한 열 배치를 눈으로 봤다. (240dpi 스크린샷은 다시 그려지기 전 프레임이 찍혀 넓은 배치처럼 보였다. 로그가 정확하다.) `wm size 1600x900`은 앱 창이 줄지 않고 잘려 보여 좁은 창 시험으로 쓸 수 없다. 이 두 방법 모두 **진짜 멀티 윈도우 분할은 아니다**(T0-11 미확인).
+- `wm size` 변경·복원 동안 `onStop`이 오지 않고 4트랙 데이터가 유지된다(e2e_four_tracks.sh). 엔진은 앱 범위(AppContainer)라 Activity가 다시 만들어져도 유지되고, 매니페스트 `configChanges`로 Activity는 다시 만들어지지도 않는다.
+
+**차량 입력이 없는 상태 (7.1 7번)**: 디버그 빌드 전용 플래그 `files/screen_only`(`run-as app.pjam.studio --user 10 touch files/screen_only`; AAOS는 앱이 사용자 10으로 돈다)가 있으면 차량 소스를 만들지 않고 시작한다. 이 상태에서 `scripts/e2e_four_tracks.sh`가 화면 패드·핸들 대체 3버튼만으로 DRUM → BASS → MELODY → FX를 차례로 녹음해 4트랙을 완성하고(각 트랙 2칸 이상, 앞 트랙 유지), 화면에 "차량 신호를 쓸 수 없어요" 안내가 있는 것을 확인한다.
+
+**3분 연속 재생 (T2-9, M2 빌드)**: `scripts/lag_run.sh` 190초, 1200스텝: p50 0.13ms, **p95 0.81ms**, p99 2.16ms, **누락 스텝 0**, 최대 24.83ms(두 번째 구간 한 번, 이후 증가 없음). 최대값 24.83ms는 게이트(p95)와 별개지만 15ms를 넘는다: 이 측정 도중 호스트에서 Gradle release 빌드를 같이 돌리고 있어서 에뮬레이터가 CPU 경쟁을 겪었을 가능성이 크다(확정 아님). `check.sh`가 같은 측정을 `lag-3min`으로 다시 한다. 귀로 끊김이 안 들리는지는 [귀·눈].
+
+**콜백 보호 (T2-9)**: Vehicle SDK 콜백 본문(브레이크·방향지시등·핸들·공조 4종·전원)은 `SupportTracker.guard`로 감싸 예외가 나면 그 항목만 `FAILED`가 된다. 기어(`PleosGearSource` SDK 콜백, `AaosGearSignals`의 UX·CarPropertyManager·Car 연결 콜백)도 try/catch로 감쌌다. 단위 테스트(`SupportTrackerTest`)가 일반 예외·`NoClassDefFoundError`·`OutOfMemoryError`를 주입해 그 항목만 FAILED, 나머지 항목은 그대로인 것을 확인한다. SDK 쪽에서 실제로 예외를 일으키는 시험은 에뮬레이터에서 하지 못했다.
+
+**release 빌드 (T2-10)**: 서명 키는 `~/.pjam-signing/`(저장소 밖, 권한 700/600, DN은 `CN=P-JAM`만). release는 R8 minify 끔(SDK 클래스 유지 문제 없음), `assembleRelease` 약 27MB. 같은 applicationId의 debug와 release는 서명이 달라 서로 덮어쓸 수 없다(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) → `check.sh`가 설치 시 필요하면 지우고 다시 깐다. `scripts/release_smoke.sh` 결과는 PROGRESS 참고.
 
 ## 방향지시등 카메라 창 (2026-11-15 실측, M2 2번)
 방향지시등을 켜면 플랫폼(`ai.umos.car.evs/.CarEvsBlindSpotCameraPreviewActivity`)이 사각지대 카메라 창을 앱 위에 띄운다. `vc.sh turn BlinkLeft`/`BlinkRight`로 켜고 `dumpsys window`와 스크린샷으로 쟀다.
