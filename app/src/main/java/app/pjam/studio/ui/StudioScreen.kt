@@ -62,23 +62,23 @@ import app.pjam.studio.input.ToggleSource
 import app.pjam.studio.input.TriggerSource
 import kotlinx.coroutines.delay
 
-private val Bg = Color(0xFF101418)
-private val CardBg = Color(0xFF1A2128)
-private val CellOff = Color(0xFF232C35)
-private val CellBeat = Color(0xFF2E3944)
-private val TextDim = Color(0xFF9AA7B3)
+internal val Bg = Color(0xFF101418)
+internal val CardBg = Color(0xFF1A2128)
+internal val CellOff = Color(0xFF232C35)
+internal val CellBeat = Color(0xFF2E3944)
+internal val TextDim = Color(0xFF9AA7B3)
 
 /**
  * 방향지시등을 켜면 플랫폼이 사각지대 카메라 창을 앱 영역의 왼쪽 위에 띄운다 (FINDINGS "방향지시등 카메라 창").
  * 앱 창 기준 약 752×423, 켜 둔 동안 계속 떠 있다. 넓은 화면은 이 구역(왼쪽 열 위쪽)에 제목·안내만 두고,
  * 트랙 카드·재생·녹음 버튼·입력 표시줄·패드는 모두 이 구역 밖에 둔다. check.sh가 노드 bounds로 겹침을 확인한다.
  */
-private val CameraZoneWidth = 744.dp
-private val CameraZoneHeight = 430.dp
+internal val CameraZoneWidth = 744.dp
+internal val CameraZoneHeight = 430.dp
 /** 이 폭 이상이면 두 열 배치(카메라 안전 구역 포함). 미만이면 한 열 + 세로 스크롤. */
 private val WideBreakpoint = 1400.dp
 
-private fun accent(k: TrackKind) = when (k) {
+internal fun accent(k: TrackKind) = when (k) {
     TrackKind.DRUM -> Color(0xFFFF8A3D)
     TrackKind.BASS -> Color(0xFF4DA3FF)
     TrackKind.MELODY -> Color(0xFF5BD68B)
@@ -95,7 +95,7 @@ fun StudioScreen(vm: StudioViewModel, debugPanel: Boolean) {
     val method by vm.gearMethod.collectAsStateWithLifecycle()
     val inputMode by vm.inputMode.collectAsStateWithLifecycle()
     val assignment by vm.toggleAssignment.collectAsStateWithLifecycle()
-    val showEquip by vm.showEquipment.collectAsStateWithLifecycle()
+    val page by vm.page.collectAsStateWithLifecycle()
 
     val screenOnly = inputMode == InputMode.SCREEN_ONLY
     val gearLabel = gearText(gear, method) + if (screenOnly) " · 차량 신호 없음, 화면 조작" else ""
@@ -104,7 +104,9 @@ fun StudioScreen(vm: StudioViewModel, debugPanel: Boolean) {
         BoxWithConstraints(Modifier.fillMaxSize().background(Bg).semantics { contentDescription = "pjam_root" }) {
             val wide = maxWidth >= WideBreakpoint
             when {
-                showEquip -> EquipmentScreen(vm, wide, gearLabel)
+                page == Page.EQUIPMENT -> EquipmentScreen(vm, wide, gearLabel)
+                page == Page.LIBRARY -> LibraryScreen(vm, wide)
+                page == Page.SETTINGS -> SettingsScreen(vm, wide)
                 wide -> WideStudio(st, sel, bar?.text, assignment, gearLabel, screenOnly, vm, debugPanel)
                 else -> NarrowStudio(st, sel, bar?.text, assignment, gearLabel, screenOnly, vm, debugPanel)
             }
@@ -144,6 +146,9 @@ private fun WideStudio(st: EngineState, sel: TrackKind, barText: String?, assign
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TransportButtons(st, sel, vm, height = 64.dp)
             }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PageButtons(vm, height = 52.dp)
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 TrackKind.entries.forEach { k ->
                     TrackCard(Modifier.weight(1f), st.tracks.first { it.kind == k }, st, k == sel, vm, assignment, labelWidth = 190.dp)
@@ -169,6 +174,7 @@ private fun NarrowStudio(st: EngineState, sel: TrackKind, barText: String?, assi
             StatusText(st)
             TempoControls(st, vm)
             TransportButtons(st, sel, vm, height = 52.dp)
+            PageButtons(vm, height = 52.dp)
         }
         TrackKind.entries.forEach { k ->
             TrackCard(Modifier.height(150.dp), st.tracks.first { it.kind == k }, st, k == sel, vm, assignment, labelWidth = 150.dp)
@@ -235,6 +241,14 @@ private fun TransportButtons(st: EngineState, sel: TrackKind, vm: StudioViewMode
     ) { Text(if (recActive) "■ 녹음 종료" else "● 녹음 ${Labels.track(sel)}", fontSize = 22.sp) }
     OutlinedButton(onClick = { vm.clearAll() }, modifier = Modifier.height(height).semantics { contentDescription = "btn_clear_all" }) { Text("전체 지우기", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.openEquipment(true) }, modifier = Modifier.height(height).semantics { contentDescription = "btn_equipment" }) { Text("내 차 장비", fontSize = 18.sp) }
+}
+
+/** 저장·보관함·설정 (T3-2, T3-3). */
+@Composable
+private fun PageButtons(vm: StudioViewModel, height: Dp) {
+    OutlinedButton(onClick = { vm.saveCurrent() }, modifier = Modifier.height(height).semantics { contentDescription = "btn_save" }) { Text("곡 저장", fontSize = 18.sp) }
+    OutlinedButton(onClick = { vm.openPage(Page.LIBRARY) }, modifier = Modifier.height(height).semantics { contentDescription = "btn_library" }) { Text("보관함", fontSize = 18.sp) }
+    OutlinedButton(onClick = { vm.openPage(Page.SETTINGS) }, modifier = Modifier.height(height).semantics { contentDescription = "btn_settings" }) { Text("설정", fontSize = 18.sp) }
 }
 
 @Composable

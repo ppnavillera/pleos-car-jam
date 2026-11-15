@@ -24,7 +24,7 @@ A shell am start -W -n "$PKG/.MainActivity" >/dev/null 2>&1; sleep 5
 dump_retry "$OUT/he-0.xml" || { fail ui-dump "$OUT/he-0.xml"; exit 1; }
 
 # ---- 카메라 창 겹침 (FINDINGS: 앱 창 왼쪽 위 x 854~1606, y 90~513) ----
-if $UI overlap "$OUT/he-0.xml" 854 90 1606 513 input_bar btn_play btn_record btn_clear_all btn_equipment pad_drum_kick pad_drum_snare pad_drum_hihat pad_drum_clap \
+if $UI overlap "$OUT/he-0.xml" 854 90 1606 513 input_bar btn_play btn_record btn_clear_all btn_equipment btn_save btn_library btn_settings pad_drum_kick pad_drum_snare pad_drum_hihat pad_drum_clap \
      track_card_DRUM_selected track_card_BASS track_card_MELODY track_card_FX switch_DRUM_on switch_BASS_on switch_MELODY_on switch_FX_on btn_bpm_up btn_bpm_down >"$OUT/he-overlap.log" 2>&1; then
   pass camera-zone-no-overlap
 else

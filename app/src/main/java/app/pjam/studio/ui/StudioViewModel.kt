@@ -27,6 +27,11 @@ import kotlinx.coroutines.launch
 
 data class InputBarState(val text: String, val seq: Int)
 
+enum class Page { STUDIO, EQUIPMENT, LIBRARY, SETTINGS }
+
+/** 보관함 한 장. bundled = APK에 들어 있는 읽기 전용 예시 곡(지울 수 없다). */
+data class LibraryEntry(val song: app.pjam.studio.engine.Song, val bundled: Boolean)
+
 class StudioViewModel(private val c: AppContainer) : ViewModel() {
     private val mapper = PlayMapper()
 
@@ -56,9 +61,76 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
     val activity: StateFlow<Map<InputKind, Int>> = _activity.asStateFlow()
     private var activitySeq = 0
 
-    private val _showEquipment = MutableStateFlow(false)
-    val showEquipment: StateFlow<Boolean> = _showEquipment.asStateFlow()
-    fun openEquipment(open: Boolean) { _showEquipment.value = open }
+    private val _page = MutableStateFlow(Page.STUDIO)
+    val page: StateFlow<Page> = _page.asStateFlow()
+    fun openEquipment(open: Boolean) = openPage(if (open) Page.EQUIPMENT else Page.STUDIO)
+    fun openPage(p: Page) {
+        _page.value = p
+        if (p == Page.LIBRARY) refreshLibrary()
+    }
+
+    // ---- 설정 (T3-3) ----
+    val settings: StateFlow<app.pjam.studio.data.Settings> = c.settings
+    fun setQuietMode(on: Boolean) = c.updateSettings { it.copy(quietMode = on) }
+    fun latencyDelta(deltaMs: Int) = c.updateSettings { it.copy(latencyMs = it.latencyMs + deltaMs) }
+
+    // ---- 곡 저장·보관함 (T3-2) ----
+    private val _library = MutableStateFlow<List<LibraryEntry>>(emptyList())
+    val library: StateFlow<List<LibraryEntry>> = _library.asStateFlow()
+
+    /** 이번 세션에서 어떤 조작이 몇 번 소리를 냈는지 (곡 카드 요약용). 전체 지우기·불러오기 때 다시 센다. */
+    private val tally = HashMap<String, Int>()
+    private fun count(key: String) { tally[key] = (tally[key] ?: 0) + 1 }
+
+    fun refreshLibrary() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val saved = c.songs.list().map { LibraryEntry(it, bundled = false) }
+            _library.value = c.bundledSongs.map { LibraryEntry(it, bundled = true) } + saved
+        }
+    }
+
+    /** 현재 루프를 자동 이름으로 저장한다. 내용이 하나도 없으면 저장하지 않는다. */
+    fun saveCurrent() {
+        val st = engineState.value
+        if (st.tracks.all { it.notes.isEmpty() }) { show("저장할 내용이 없어요 — 먼저 녹음해 보세요"); return }
+        val now = System.currentTimeMillis()
+        val summary = tally.toMap()
+        val tracks = st.tracks.map { app.pjam.studio.engine.Track(it.kind, it.notes, it.muted) }
+        val bpm = st.bpm
+        val pack = c.settings.value.soundPackId
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val name = app.pjam.studio.data.SongNamer.next(c.songs.list().map { it.name }, java.time.LocalDate.now())
+            val song = app.pjam.studio.engine.Song(
+                id = java.util.UUID.randomUUID().toString(), name = name, createdAt = now, bpm = bpm, transpose = 0,
+                soundPackId = pack, tracks = tracks, inputSummary = summary,
+            )
+            try {
+                c.songs.save(song)
+                android.util.Log.i("PJAM_DATA", "saved ${song.id} name=${song.name}")
+                show("저장했어요: ${song.name}")
+            } catch (t: Throwable) {
+                android.util.Log.w("PJAM_DATA", "save failed: $t")
+                show("저장하지 못했어요")
+            }
+            refreshLibrary()
+        }
+    }
+
+    /** 보관함의 곡을 불러와 바로 재생한다 (시연에서 시간이 밀릴 때 예시 곡을 쓰는 용도). */
+    fun loadSong(song: app.pjam.studio.engine.Song) {
+        if (!c.guard.allowInput()) return
+        c.engine.send(EngineCommand.LoadSong(song))
+        tally.clear(); tally.putAll(song.inputSummary)
+        c.focus.acquire()
+        c.engine.send(EngineCommand.Start)
+        android.util.Log.i("PJAM_DATA", "loaded ${song.id} name=${song.name} notes=${song.tracks.sumOf { it.notes.size }}")
+        show("불러왔어요: ${song.name}")
+        openPage(Page.STUDIO)
+    }
+
+    fun deleteSong(id: String) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) { c.songs.delete(id); refreshLibrary() }
+    }
 
     init {
         viewModelScope.launch {
@@ -87,6 +159,7 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
     fun onPad(sampleId: String, timestampNanos: Long) {
         if (!c.guard.allowInput()) return
         val id = mapper.onPad(sampleId)
+        count("PAD")
         c.focus.acquire()
         c.engine.send(EngineCommand.Play(id, timestampNanos))
         show("화면 패드 → ${Labels.sample(id)}")
@@ -102,10 +175,15 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
     fun onVehicleInput(e: InputEvent) {
         // 플랫폼이 화면을 가려도 SDK 콜백은 계속 온다. 잠금·백그라운드 중에는 소리도 포커스도 만들지 않는다.
         if (!c.guard.allowInput()) { android.util.Log.i("PJAM_LOCK", "input dropped (inactive): $e"); return }
+        if (!app.pjam.studio.input.InputFilter.accepts(e, c.settings.value.quietMode)) {
+            android.util.Log.i("PJAM_INPUT", "조용한 연주 모드: 무시 $e")
+            return
+        }
         val kind = _selected.value
         when (e) {
             is InputEvent.Trigger -> {
                 val id = mapper.onTrigger(kind, e.source)
+                count(e.source.name)
                 c.focus.acquire()
                 c.engine.send(EngineCommand.Play(id, e.timestampNanos))
                 val src = when (e.source) { TriggerSource.BRAKE -> "브레이크"; TriggerSource.TURN_LEFT -> "방향지시등 좌"; TriggerSource.TURN_RIGHT -> "방향지시등 우" }
@@ -120,6 +198,7 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
                 val target = toggleAssignment.value[e.source]
                 if (target == null) { android.util.Log.i("PJAM_INPUT", "toggle ${e.source} 배정 없음(화면 스위치만)"); return }
                 toggleMute(target)
+                count("HVAC")
                 show("${Labels.toggle(e.source)} → ${Labels.track(target)} 켜기/끄기")
             }
             is InputEvent.Level -> when (e.source) {
@@ -156,7 +235,7 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
     val forcedLock get() = c.guard.forcedLock
     fun setForcedLock(on: Boolean) = c.guard.setForcedLock(on)
     fun clear(k: TrackKind) = c.engine.send(EngineCommand.ClearTrack(k))
-    fun clearAll() = c.engine.send(EngineCommand.ClearAll)
+    fun clearAll() { tally.clear(); c.engine.send(EngineCommand.ClearAll) }
     fun bpmDelta(d: Int) = c.engine.send(EngineCommand.SetBpm(engineState.value.bpm + d))
     fun nowNanos() = c.clock.nanos()
 

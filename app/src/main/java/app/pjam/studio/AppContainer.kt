@@ -4,6 +4,11 @@ import android.content.Context
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import app.pjam.studio.data.BundledSongs
+import app.pjam.studio.data.FileSettingsStore
+import app.pjam.studio.data.FileSongRepository
+import app.pjam.studio.data.Settings
+import app.pjam.studio.data.SongRepository
 import app.pjam.studio.engine.Clock
 import app.pjam.studio.engine.EngineCommand
 import app.pjam.studio.engine.EngineRunner
@@ -18,9 +23,12 @@ import app.pjam.studio.input.pleos.SignalProbe
 import app.pjam.studio.lock.PlaybackGuard
 import app.pjam.studio.sound.AudioFocusController
 import app.pjam.studio.sound.SoundPoolSampler
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import java.io.File
 
 /** 수동 DI. 엔진은 Activity 밖(앱 범위)에서 보유한다. */
-class AppContainer(context: Context) {
+class AppContainer(private val context: Context) {
     val clock = Clock { SystemClock.elapsedRealtimeNanos() }
     val sampler = SoundPoolSampler(context)
     /** 스텝 호출 시각 오차(T0-13/T2-9). 200스텝(100BPM에서 30초)마다 한 줄 요약. */
@@ -62,6 +70,27 @@ class AppContainer(context: Context) {
         },
     )
 
+    // ---- 저장·설정 (T3-2, T3-3) ----
+    val songs: SongRepository = FileSongRepository(File(context.filesDir, "songs")) { Log.w("PJAM_DATA", it) }
+    /** APK에 들어 있는 읽기 전용 예시 곡. 첫 실행 여부와 무관하게 항상 보관함에 보인다. */
+    val bundledSongs by lazy { listOfNotNull(BundledSongs.load(context, BundledSongs.EXAMPLE_FILE)) }
+    private val settingsStore = FileSettingsStore(File(context.filesDir, "settings.json")) { Log.w("PJAM_DATA", it) }
+    private val _settings = MutableStateFlow(settingsStore.load())
+    val settings: StateFlow<Settings> = _settings
+
+    /** 설정을 바꾸고 바로 저장·적용한다. */
+    fun updateSettings(change: (Settings) -> Settings) {
+        val next = change(_settings.value).sanitized()
+        _settings.value = next
+        settingsStore.save(next)
+        applySettings(next)
+        Log.i("PJAM_DATA", "settings $next")
+    }
+
+    private fun applySettings(s: Settings) {
+        engine.send(EngineCommand.SetLatencyNanos(s.latencyMs * 1_000_000L))
+    }
+
     /** 디버그 패널이 쓰는 가짜 입력. 실제 SDK 입력과 병행한다. */
     val fakeInput = FakeVehicleInputSource(clock)
 
@@ -84,6 +113,7 @@ class AppContainer(context: Context) {
 
     init {
         runner.start()
+        applySettings(_settings.value)
         startDebugExample(context)
         inputManager.start()
         try { SignalProbe(context).start() } catch (t: Throwable) { Log.w("PJAM_V2", "probe start failed: $t") } // 디버그에서만 동작

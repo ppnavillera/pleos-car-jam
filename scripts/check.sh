@@ -160,6 +160,16 @@ else
   skip hvac-equipment "스튜디오 화면 또는 스크립트 없음"
 fi
 
+# ---------- 4d2. 곡 저장·보관함, 설정, 조용한 연주 모드 (T3-2, T3-3) ----------
+if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -f "$ROOT/scripts/library_settings.sh" ] && [ -x "$ROOT/scripts/vc.sh" ]; then
+  bash "$ROOT/scripts/library_settings.sh" "$DEV" "$OUT" >"$OUT/library-settings.log" 2>&1
+  LS=$?
+  grep -E '^(PASS|FAIL)' "$OUT/library-settings.log"
+  [ $LS -eq 0 ] || FAILED=1
+else
+  skip library-settings "스튜디오 화면 또는 스크립트 없음"
+fi
+
 # ---------- 4e. 차량 입력 없이 화면만으로 4트랙 + 창 크기 변경 (T2-3, T2-8, 기획서 7.1 5번·7번) ----------
 if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -f "$ROOT/scripts/e2e_four_tracks.sh" ]; then
   if bash "$ROOT/scripts/e2e_four_tracks.sh" "$DEV" "$OUT" >"$OUT/e2e-four-tracks.log" 2>&1; then pass e2e-four-tracks-screen-only; else fail e2e-four-tracks-screen-only "$OUT/e2e-four-tracks.log"; fi
