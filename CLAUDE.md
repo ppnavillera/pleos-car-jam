@@ -97,3 +97,24 @@ Single Activity, Jetpack Compose, ViewModel + StateFlow, manual DI via an `AppCo
 - 커밋 메시지 앞에 작업 ID를 붙인다 (예: `T1-3 Transport`). push는 하지 않는다. 사람이 한다.
 - 한 작업에서 60분 넘게 막히면 대체 경로(기본값, 화면 조작, 가짜 입력)로 넘어가고 PROGRESS의 "막힌 것"에 적는다.
 - 작업을 끝낼 때마다 `docs/PROGRESS.md`를 갱신한다.
+
+## 커밋 메시지
+형식은 아래와 같다. type은 feat, fix, test, docs, refactor, chore 중 하나, 괄호 안은 계획서 작업 ID다.
+본문은 "무엇이 어떻게 동작하게 됐는지"를 항목으로 적는다. push는 하지 않는다. 사람이 한다.
+
+    feat(T1-6): 녹음을 종료 버튼까지 이어지게 변경
+
+    - 녹음: 루프가 돌아도 계속되고, 바퀴마다 새 입력이 쌓임
+    - 메트로놈: 카운트인과 녹음 중에 울리고 녹음이 끝나면 꺼짐
+    - 기어 이탈·백그라운드 진입 시 녹음 종료, 내용 유지
+
+    관련: T1-6, 계획서 3.3
+
+    Co-Authored-By: <실제로 쓴 모델 이름> <noreply@anthropic.com>
+
+## 확인된 사실 (2026-11-15 프로토타입)
+- SDK 브레이크 값은 Boolean이다. Virtual Console 카드만 0~100%다.
+- SDK 방향지시등 값은 OFF/LEFT/RIGHT 세 가지다.
+- 에뮬레이터 기어가 P가 아니면 플랫폼이 앱을 가린다. 검증 전에 `scripts/vc.sh gear P`.
+- 차량 값 조작은 `scripts/vc.sh`로 한다. inject-vhal-event는 막혀 있다.
+- 툴체인은 AGP 9.5.1 / Kotlin 2.4.0 / compileSdk 36이다 (계획서 3.1과 다름).

@@ -26,6 +26,7 @@
 - 남음: T1-5 `[수동]` 모든 샘플 귀로 확인·포커스 잃으면 정지, T1-8 AUTO 연동 옵션(T3-9), T2-2 BASS/MELODY 연주감, T2-9 강제 예외 주입 테스트, 반응형 배치, 저장·보관함, 일반 에뮬레이터에서 1트랙 녹음(세로 화면에서 상단 버튼이 밀려 못 함)
 
 ## 기록 (최신이 위)
+- 11/15 접수용 스냅샷 `prototype-1115b`: 새 기능 없음. M0·M1 반영본으로 debug APK 교체(`apk/TeamPJAM_PJAM_prototype_debug.apk`, 33.5MB, debug 서명·debug 전용 권한 포함), README의 되는 것/안 되는 것·실행 방법 갱신, 사용자가 고친 CLAUDE.md 포함. `scripts/check.sh` 전부 PASS. push는 하지 않음.
 - 11/15 M0 측정 결과: 14개 중 13개 SDK로 읽힘(드라이브 모드만 미지원), 핸들 −500..470 부호 반대, PUT→콜백 평균 6.6ms, 스텝 호출 지연 p95 0.74ms(G2 통과). FINDINGS V1·V2·V4·V6·오디오 재생 측정.
 - 11/15 기어 잠금(T0-7): SDK Gear 콜백으로 D 전환 후 약 30ms에 소리 정지. 방향지시등이 플랫폼 카메라 창을 띄워 onPause를 일으켜서 백그라운드 기준을 onStop으로 정함. `SoundPoolSampler.stopAll`이 멈추지 못하던 버그 수정. FINDINGS V3.
 - 11/15 녹음 방식 변경(T1-6): 사용자 결정으로 2마디 자동 종료 폐지. PLAN_CHANGES.
