@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 기어 잠금 회귀 확인 (T0-7 / T1-11, FINDINGS V3):
-#   루프 재생 중 gear D → 엔진 정지·오디오 출력 정지 → 입력 무시 → gear P → 트랙 데이터 그대로·재생은 정지 상태
+#   루프 재생 중 gear D → 엔진 정지·오디오 출력 정지 → 입력 무시 → gear P → 트랙 데이터 그대로·재생은 루프 처음부터 다시 켜짐(사용자 결정, PLAN_CHANGES (6))
+#   정지 상태에서 D→P 는 정지 유지, 녹음 중 D→P 는 재생만 켜지고 녹음은 이어지지 않음, 앱 전환(백그라운드) 복귀는 정지 유지
 # usage: gear_regression.sh <adb 시리얼> <출력 폴더>     각 확인을 PASS/FAIL 한 줄로 낸다. 하나라도 FAIL이면 종료 코드 1.
 set -u
 DEV="$1"; OUT="$2"; PKG="app.pjam.studio"
@@ -96,12 +97,17 @@ grep -q 'content-desc="lock_screen"' "$OUT/gear-5-park.xml" && fail gear-p-unloc
 sleep 6
 A logcat -d -v epoch -s PJAM_ENG:I PJAM_LOCK:I PJAM_INPUT:I PJAM_FOCUS:I PJAM_LIFE:I >"$OUT/gear-6-park-all.log"
 A logcat -d -s PJAM_ENG:I >"$OUT/gear-6-park.log"
-grep -q 'LOOP wrap' "$OUT/gear-6-park.log" && fail gear-p-not-autoplay "P 복귀 후 재생이 저절로 시작됨" || pass gear-p-not-autoplay "정지 상태 유지"
-standby && pass gear-p-silent || fail gear-p-silent "P 복귀 후 소리가 남"
+# 잠금 직전에 재생 중이었으므로 P 복귀 때 루프 처음부터 재생이 다시 켜진다. 녹음은 이어지지 않는다.
+grep -q 'PLAY start' "$OUT/gear-6-park.log" && grep -q 'LOOP wrap' "$OUT/gear-6-park.log" && pass gear-p-resumes-playback "PLAY start 후 루프가 돎" || fail gear-p-resumes-playback "P 복귀 후 재생이 다시 켜지지 않음 ($OUT/gear-6-park-all.log)"
+grep -q 'RESUME' "$OUT/gear-6-park-all.log" && pass gear-p-resume-logged || fail gear-p-resume-logged "PJAM_LOCK RESUME 로그 없음"
+grep -q 'REC start\|REC armed' "$OUT/gear-6-park.log" && fail gear-p-no-record-resume "P 복귀 뒤 녹음이 시작됨" || pass gear-p-no-record-resume
+OK=0; for i in 1 2 3 4 5; do standby || { OK=1; break; }; sleep 1; done
+[ $OK -eq 1 ] && pass gear-p-audio-active "재생이 켜져 소리 출력이 깨어 있음" || fail gear-p-audio-active "P 복귀 후에도 오디오 출력이 standby"
+# 다시 켜진 뒤 데이터가 그대로인지(재생 중 덤프)
+dump_retry "$OUT/gear-6-park-playing.xml" && [ "$(cells "$OUT/gear-6-park-playing.xml")" = "$BEFORE" ] && pass gear-p-data-intact-playing || fail gear-p-data-intact-playing "재생 중 칸이 달라짐"
 
 # ---- 백그라운드(onStop): 다른 앱으로 전환해도 같은 경로로 멈추고(T2-8), 돌아오면 데이터 그대로·정지 상태 ----
-read -r PX PY < <(center "$OUT/gear-5-park.xml" btn_play) || { fail bg-setup "btn_play 없음"; exit 1; }
-A shell input tap "$PX" "$PY"; sleep 6   # 저장된 루프 재생
+sleep 2   # P 복귀로 이미 재생 중이다 (재생 버튼을 누르면 오히려 멈춘다)
 A logcat -c
 A shell am start -n com.android.deskclock/.DeskClock >/dev/null 2>&1; sleep 1.5
 A logcat -d -v epoch -s PJAM_LOCK:I PJAM_ENG:I PJAM_LIFE:I >"$OUT/gear-7-bg.log"
@@ -130,5 +136,29 @@ A logcat -d -s PJAM_LOCK:I PJAM_INPUT:I PJAM_LIFE:I >"$OUT/gear-9-turn.log"
 grep -q 'STOP reason' "$OUT/gear-9-turn.log" && fail turn-overlay-no-stop "방향지시등 때 사각지대 창이 떴다고 앱을 정지시킴 ($OUT/gear-9-turn.log)" || pass turn-overlay-no-stop
 grep -q 'input dropped' "$OUT/gear-9-turn.log" && fail turn-overlay-input-kept "방향지시등 입력이 버려짐" || pass turn-overlay-input-kept
 grep -q '방향지시등 우 → 하이햇' "$OUT/gear-9-turn.log" && pass turn-overlay-sound-path || fail turn-overlay-sound-path "방향지시등 우 → 하이햇 입력 표시 없음"
+
+# ---- 정지 상태에서 D → P: 정지로 둔다 (잠금 직전에 재생 중이 아니었으므로) ----
+# 위 백그라운드 복귀 뒤 엔진은 정지 상태다.
+bash "$ROOT/scripts/vc.sh" gear D >/dev/null 2>&1; sleep 1.5
+A logcat -c
+bash "$ROOT/scripts/vc.sh" gear P >/dev/null 2>&1; sleep 6
+A logcat -d -s PJAM_ENG:I PJAM_LOCK:I >"$OUT/gear-10-stopped-dp.log"
+grep -q 'PLAY start\|LOOP wrap\|RESUME' "$OUT/gear-10-stopped-dp.log" && fail gear-stopped-stays-stopped "정지 상태였는데 P 복귀 후 재생이 켜짐" || pass gear-stopped-stays-stopped
+standby && pass gear-stopped-silent || fail gear-stopped-silent "정지 상태였는데 소리가 남"
+
+# ---- 녹음 중 D → P: 녹음은 내용을 유지하고 끝나며, P 복귀 때 재생만 켜진다 (녹음은 이어 가지 않는다) ----
+dump_retry "$OUT/gear-11-pre-rec.xml" || { fail gear-rec-setup "UI 덤프 실패"; exit 1; }
+A shell input tap "$CX" "$CY"; sleep 0.4
+A logcat -c
+A shell "input tap $RX $RY; sleep 3.4; input tap $KX $KY; sleep 0.5"   # 카운트인 1마디(2.4s) 뒤 녹음 중에 킥 한 번
+bash "$ROOT/scripts/vc.sh" gear D >/dev/null 2>&1; sleep 1.5
+A logcat -d -s PJAM_ENG:I >"$OUT/gear-12-rec-d.log"
+grep -q 'REC end DRUM notes=1 (stop)' "$OUT/gear-12-rec-d.log" && pass gear-rec-d-ends-keeps-note "녹음 종료·노트 1개 유지" || fail gear-rec-d-ends-keeps-note "녹음 중 D 에서 REC end notes=1 (stop) 없음 ($OUT/gear-12-rec-d.log)"
+A logcat -c
+bash "$ROOT/scripts/vc.sh" gear P >/dev/null 2>&1; sleep 6
+A logcat -d -s PJAM_ENG:I PJAM_LOCK:I >"$OUT/gear-13-rec-p.log"
+grep -q 'PLAY start' "$OUT/gear-13-rec-p.log" && grep -q 'LOOP wrap' "$OUT/gear-13-rec-p.log" && pass gear-rec-p-resumes-playback || fail gear-rec-p-resumes-playback "녹음 중 D 뒤 P 복귀에서 재생이 켜지지 않음 ($OUT/gear-13-rec-p.log)"
+grep -q 'REC start\|REC armed' "$OUT/gear-13-rec-p.log" && fail gear-rec-p-no-record "P 복귀 뒤 녹음이 이어짐" || pass gear-rec-p-no-record
+dump_retry "$OUT/gear-14-rec-p.xml" && [ -n "$(cells "$OUT/gear-14-rec-p.xml")" ] && pass gear-rec-p-note-kept "$(cells "$OUT/gear-14-rec-p.xml")" || fail gear-rec-p-note-kept "녹음하던 노트가 사라짐"
 
 exit $FAILED

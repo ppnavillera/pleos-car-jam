@@ -16,6 +16,8 @@ sealed interface EngineCommand {
     /** 녹음 중이면 끝내고 내용을 유지, 대기 중이면 취소. 트랙 선택 변경이나 기어 이탈 때 쓴다. 재생은 그대로 둔다. */
     data object FinishRecord : EngineCommand
     data object TogglePlay : EngineCommand
+    /** 멈춰 있을 때만 루프 처음부터 재생을 켠다. 이미 돌고 있으면 아무것도 하지 않는다(토글이 아니라서 경합에도 정지시키지 않는다). */
+    data object Start : EngineCommand
     data object Stop : EngineCommand
     data class ClearTrack(val kind: TrackKind) : EngineCommand
     data object ClearAll : EngineCommand
@@ -108,6 +110,7 @@ class LoopEngine(
             is EngineCommand.Play -> onPlay(cmd)
             is EngineCommand.ToggleRecord -> toggleRecord(cmd.kind, now)
             EngineCommand.TogglePlay -> if (transport.running) stopTransport() else startPlayback(now)
+            EngineCommand.Start -> if (!transport.running) startPlayback(now)
             EngineCommand.Stop -> if (transport.running) stopTransport() else sampler.stopAll() // 모니터링 소리도 끊는다
             EngineCommand.FinishRecord -> finishRecord()
             is EngineCommand.ClearTrack -> notes.getValue(cmd.kind).clear()

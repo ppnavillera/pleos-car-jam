@@ -41,7 +41,8 @@ class AppContainer(context: Context) {
 
     /**
      * P단 잠금 + 백그라운드 정지. 기어가 P가 아니게 되거나 Activity가 onStop 되면 엔진을 Stop(녹음 중이면 끝내고 내용 유지)하고
-     * 오디오 포커스를 반납한다. P/전경으로 돌아와도 재생은 자동으로 켜지 않는다.
+     * 오디오 포커스를 반납한다. 잠금 직전에 재생 중이었다면 P로 돌아올 때 루프 처음부터 재생을 다시 켠다(녹음은 이어 가지 않음).
+     * 앱 전환으로 멈춘 경우는 돌아와도 정지 상태다.
      */
     val guard = PlaybackGuard(
         onStop = { reason ->
@@ -50,6 +51,12 @@ class AppContainer(context: Context) {
             focus.release()
         },
         log = { Log.i("PJAM_LOCK", it) },
+        isPlaying = { engine.state.value.playing },
+        onResume = {
+            Log.i("PJAM_LOCK", "RESUME playback")
+            focus.acquire()
+            engine.send(EngineCommand.Start)
+        },
     )
 
     /** 디버그 패널이 쓰는 가짜 입력. 실제 SDK 입력과 병행한다. */

@@ -337,4 +337,37 @@ class LoopEngineTest {
         engine.send(EngineCommand.Play("drum_kick", now)); engine.tick(now)
         assertEquals(1, sampler.count("drum_kick"))
     }
+
+    @Test fun startIsNotAToggleAndDoesNothingWhileRunning() {
+        engine.send(EngineCommand.LoadSong(Song("x", "x", 0, tracks = listOf(
+            Track(TrackKind.DRUM, listOf(Note(0, "drum_kick"))), Track(TrackKind.BASS), Track(TrackKind.MELODY), Track(TrackKind.FX)))))
+        engine.send(EngineCommand.Start); engine.tick(now)
+        runUntil(at(40.0))
+        engine.send(EngineCommand.Start) // 이미 돌고 있으면 무시: 처음부터 다시 시작하거나 멈추면 안 된다
+        runUntil(at(41.0))
+        assertEquals(true, engine.state.value.playing)
+        assertEquals(2, sampler.count("drum_kick")) // 스텝 0, 32
+    }
+
+    @Test fun stopWhileRecordingThenStartResumesPlaybackFromLoopStartWithoutRecording() {
+        startRecordDrum()
+        runUntil(at(16.0) + ms)
+        runUntil(at(20.0)); play("drum_kick", at(20.0))
+        runUntil(at(24.0))
+        engine.send(EngineCommand.Stop) // 기어 D 등: 녹음은 내용을 유지하고 끝난다
+        runUntil(at(24.0) + 2 * ms)
+        assertEquals(false, engine.state.value.playing)
+        assertEquals(null, engine.state.value.recordingKind)
+        assertEquals(1, kind(TrackKind.DRUM).notes.size)
+        sampler.hits.clear()
+        engine.send(EngineCommand.Start) // P 복귀
+        val resumeAt = now
+        runUntil(resumeAt + 5 * step)
+        assertEquals(true, engine.state.value.playing)
+        assertEquals(null, engine.state.value.recordingKind)
+        assertEquals(0, sampler.hits.count { it.id.startsWith("metro") }) // 메트로놈도 없음
+        assertEquals(TrackStatus.PLAYING, kind(TrackKind.DRUM).status)
+        // 루프 위치 4(= 재개 후 4스텝)에서 앞서 찍은 킥(위치 4)이 한 번 울린다
+        assertEquals(1, sampler.count("drum_kick"))
+    }
 }
