@@ -17,6 +17,7 @@ class InputMapper(
     private var zone: SteeringZone? = null
     private val toggles = HashMap<ToggleSource, Boolean>()
     private val levels = HashMap<LevelSource, Float>()
+    private val key = KeyFromTemperature()
 
     /**
      * 브레이크. SDK 값이 Boolean이라(FINDINGS V1) false→true가 Trigger다. 계획서 3.4의 5%/2% 비율 규칙은 쓰지 않는다(PLAN_CHANGES).
@@ -69,6 +70,8 @@ class InputMapper(
         if (value == null || max <= min) return null
         val n = ((value - min) / (max - min)).coerceIn(0f, 1f)
         val prev = levels.put(source, n)
-        return if (prev != null && prev != n) InputEvent.Level(source, n, ts) else null
+        // 설정 온도는 첫 값을 기준(조 0)으로 삼는다. 첫 값은 이벤트가 아니지만 기준은 여기서 잡힌다.
+        val semis = if (source == LevelSource.TEMPERATURE) key.semitones(value) else 0
+        return if (prev != null && prev != n) InputEvent.Level(source, n, ts, raw = value, semitones = semis) else null
     }
 }

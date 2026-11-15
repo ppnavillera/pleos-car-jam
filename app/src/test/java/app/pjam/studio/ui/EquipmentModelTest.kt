@@ -64,7 +64,7 @@ class EquipmentModelTest {
 
     @Test fun unusedItemsAreLabelledNotConnected() {
         val r = rows(all)
-        for (k in listOf(InputKind.TEMPERATURE, InputKind.WINDOW, InputKind.WIPER, InputKind.DRIVE_MODE)) {
+        for (k in listOf(InputKind.WINDOW, InputKind.WIPER, InputKind.DRIVE_MODE)) {
             assertEquals(EquipState.UNUSED, r[k]!!.state)
         }
     }

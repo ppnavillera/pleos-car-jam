@@ -24,6 +24,8 @@ sealed interface EngineCommand {
     /** 다음 스텝 경계에서 적용된다. */
     data class SetMuted(val kind: TrackKind, val muted: Boolean) : EngineCommand
     data class SetBpm(val bpm: Int) : EngineCommand
+    /** 조(키): BASS·MELODY 소리에만 반음 단위로 적용된다(−3..+3). 드럼·FX·메트로놈은 그대로. */
+    data class SetTranspose(val semitones: Int) : EngineCommand
     data class SetLatencyNanos(val nanos: Long) : EngineCommand
     data class LoadSong(val song: Song) : EngineCommand
 }
@@ -41,6 +43,7 @@ data class EngineState(
     val recordingKind: TrackKind? = null,
     val tracks: List<TrackState> = TrackKind.entries.map { TrackState(it, emptyList(), false, TrackStatus.EMPTY) },
     val loopCount: Long = 0,
+    val transpose: Int = 0,
 )
 
 /**
@@ -77,6 +80,7 @@ class LoopEngine(
     private var origin = 0L // 루프 위치 0이 되는 절대 스텝 (mod 32)
     private var bpm = DEFAULT_BPM
     private var latencyNanos = 0L
+    private var transpose = 0
     private var lastLoopPos = -1
     private var countInBeat = 0
     private var loopCount = 0L
@@ -121,6 +125,7 @@ class LoopEngine(
                 transport.setStepNanos(stepNanosForBpm(bpm))
             }
             is EngineCommand.SetLatencyNanos -> latencyNanos = cmd.nanos
+            is EngineCommand.SetTranspose -> transpose = cmd.semitones.coerceIn(-MAX_TRANSPOSE, MAX_TRANSPOSE)
             is EngineCommand.LoadSong -> loadSong(cmd.song)
         }
     }
@@ -133,6 +138,7 @@ class LoopEngine(
             mutedApplied[t.kind] = t.muted
         }
         bpm = song.bpm.coerceIn(MIN_BPM, MAX_BPM)
+        transpose = song.transpose.coerceIn(-MAX_TRANSPOSE, MAX_TRANSPOSE)
     }
 
     private fun startPlayback(now: Long) {
@@ -154,7 +160,7 @@ class LoopEngine(
     }
 
     private fun onPlay(cmd: EngineCommand.Play) {
-        sampler.play(cmd.sampleId, cmd.velocity) // 모니터링: 퀀타이즈와 무관하게 즉시
+        sampler.play(cmd.sampleId, cmd.velocity, transposeFor(cmd.sampleId)) // 모니터링: 퀀타이즈와 무관하게 즉시
         val ph = phase
         val half = transport.stepNanos / 2
         when (ph) {
@@ -178,6 +184,8 @@ class LoopEngine(
             Phase.Idle -> Unit
         }
     }
+
+    private fun transposeFor(sampleId: String) = if (isPitched(sampleId)) transpose else 0
 
     private fun addNote(kind: TrackKind, note: Note) {
         val list = notes.getValue(kind)
@@ -271,7 +279,7 @@ class LoopEngine(
             for (note in notes.getValue(k)) {
                 if (note.step != pos) continue
                 if (skipOnce.isNotEmpty() && skipOnce.remove(n to note.sampleId)) continue // 방금 모니터링으로 울린 입력 (비어 있으면 Pair를 만들지 않는다)
-                sampler.play(note.sampleId, note.velocity)
+                sampler.play(note.sampleId, note.velocity, transposeFor(note.sampleId))
             }
         }
         if (skipOnce.isNotEmpty()) skipOnce.removeAll { it.first <= n }
@@ -301,6 +309,12 @@ class LoopEngine(
             recordingKind = (ph as? Phase.Recording)?.kind ?: (ph as? Phase.Armed)?.kind,
             tracks = tracks,
             loopCount = loopCount,
+            transpose = transpose,
         )
     }
 }
+
+const val MAX_TRANSPOSE = 3
+
+/** 조를 옮길 소리인지: 음높이가 있는 BASS·MELODY만. 드럼·FX·메트로놈은 옮기지 않는다. */
+fun isPitched(sampleId: String) = sampleId.startsWith("bass_") || sampleId.startsWith("mel_")

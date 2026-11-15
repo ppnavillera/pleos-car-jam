@@ -104,7 +104,7 @@ class InputMapperTest {
 
     @Test fun levelNormalizesByCapabilityRange() {
         assertNull(m.level(LevelSource.FAN_SPEED, 0f, 0f, 8f, 0))
-        assertEquals(InputEvent.Level(LevelSource.FAN_SPEED, 0.5f, 1), m.level(LevelSource.FAN_SPEED, 4f, 0f, 8f, 1))
+        assertEquals(InputEvent.Level(LevelSource.FAN_SPEED, 0.5f, 1, raw = 4f), m.level(LevelSource.FAN_SPEED, 4f, 0f, 8f, 1))
         assertNull(m.level(LevelSource.FAN_SPEED, 4f, 0f, 8f, 2))
         assertNull(m.level(LevelSource.WINDOW, 5f, 0f, 0f, 3)) // 범위를 모르면 무시
     }
@@ -113,8 +113,8 @@ class InputMapperTest {
     @Test fun outOfRangeLevelClampsToNearestEnd() {
         val mm = InputMapper()
         assertNull(mm.level(LevelSource.FAN_SPEED, 3f, 1f, 8f, 0)) // 기준값
-        assertEquals(InputEvent.Level(LevelSource.FAN_SPEED, 0f, 1), mm.level(LevelSource.FAN_SPEED, 0f, 1f, 8f, 1)) // 0 → 최소
+        assertEquals(InputEvent.Level(LevelSource.FAN_SPEED, 0f, 1, raw = 0f), mm.level(LevelSource.FAN_SPEED, 0f, 1f, 8f, 1)) // 0 → 최소
         assertNull(mm.level(LevelSource.FAN_SPEED, 1f, 1f, 8f, 2)) // 최소(1)도 같은 0.0이라 변화 없음
-        assertEquals(InputEvent.Level(LevelSource.FAN_SPEED, 1f, 3), mm.level(LevelSource.FAN_SPEED, 12f, 1f, 8f, 3)) // 12 → 최대
+        assertEquals(InputEvent.Level(LevelSource.FAN_SPEED, 1f, 3, raw = 12f), mm.level(LevelSource.FAN_SPEED, 12f, 1f, 8f, 3)) // 12 → 최대
     }
 }

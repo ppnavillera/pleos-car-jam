@@ -13,6 +13,7 @@ sealed interface InputEvent {
     data class Trigger(val source: TriggerSource, override val timestampNanos: Long) : InputEvent
     data class Zone(val zone: SteeringZone, override val timestampNanos: Long) : InputEvent
     data class Toggle(val source: ToggleSource, override val timestampNanos: Long) : InputEvent
-    data class Level(val source: LevelSource, val normalized: Float, override val timestampNanos: Long) : InputEvent
+    /** raw = 정규화 전 원래 값(설정 온도 °C 등), semitones = 설정 온도가 기준 대비 정하는 조(−3..+3). 온도 외에는 기본값. */
+    data class Level(val source: LevelSource, val normalized: Float, override val timestampNanos: Long, val raw: Float? = null, val semitones: Int = 0) : InputEvent
     data class Cycle(val source: CycleSource, override val timestampNanos: Long) : InputEvent
 }

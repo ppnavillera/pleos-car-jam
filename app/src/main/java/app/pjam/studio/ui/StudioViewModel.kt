@@ -100,11 +100,12 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
         val summary = tally.toMap()
         val tracks = st.tracks.map { app.pjam.studio.engine.Track(it.kind, it.notes, it.muted) }
         val bpm = st.bpm
+        val transpose = st.transpose
         val pack = c.settings.value.soundPackId
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val name = app.pjam.studio.data.SongNamer.next(c.songs.list().map { it.name }, java.time.LocalDate.now())
             val song = app.pjam.studio.engine.Song(
-                id = java.util.UUID.randomUUID().toString(), name = name, createdAt = now, bpm = bpm, transpose = 0,
+                id = java.util.UUID.randomUUID().toString(), name = name, createdAt = now, bpm = bpm, transpose = transpose,
                 soundPackId = pack, tracks = tracks, inputSummary = summary,
             )
             try {
@@ -211,11 +212,20 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
                     c.engine.send(EngineCommand.SetBpm(bpm))
                     show("풍량 → 템포 $bpm BPM")
                 }
+                app.pjam.studio.input.LevelSource.TEMPERATURE -> {
+                    c.engine.send(EngineCommand.SetTranspose(e.semitones))
+                    show("설정 온도 ${e.raw ?: "?"}°C → 조 ${signed(e.semitones)}")
+                }
                 else -> show("${e.source} ${"%.2f".format(e.normalized)}")
             }
             is InputEvent.Cycle -> show("${e.source}")
         }
     }
+
+    private fun signed(n: Int) = if (n > 0) "+$n" else "$n"
+
+    /** 화면 조 − / + 버튼 (T3-4). 온도가 다시 바뀌면 온도가 정한 값이 우선한다. */
+    fun transposeDelta(d: Int) = c.engine.send(EngineCommand.SetTranspose((engineState.value.transpose + d).coerceIn(-app.pjam.studio.engine.MAX_TRANSPOSE, app.pjam.studio.engine.MAX_TRANSPOSE)))
 
     fun toggleMute(k: TrackKind) {
         val cur = engineState.value.tracks.first { it.kind == k }.muted

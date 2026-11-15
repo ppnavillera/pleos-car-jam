@@ -31,6 +31,7 @@
 - 남음: T1-5 `[수동]` 모든 샘플 귀로 확인·포커스 잃으면 정지, T1-8 AUTO 연동 옵션(T3-9), T2-2 BASS/MELODY 연주감 [수동], 저장·보관함(M3), 일반 에뮬레이터에서 1트랙 녹음(세로 화면 상단 버튼 밀림은 T2-6 한 열 배치로 해결했으나 다시 시험하지 않음)
 
 ## 기록 (최신이 위)
+- 11/15 M3 진행(사용량 한도로 여기서 멈춤): T3-1 풍량→템포, T3-2 저장·보관함(예시 4트랙 곡 포함), T3-3 조용한 연주 모드·설정, T3-5 차량 사운드팩(화면 버튼 전환), T3-4 온도→조(코드·단위 테스트 완료, e2e 한 줄 재확인 전)까지 했다. 남은 것: T3-6 함께 쌓기, T3-7 창문·와이퍼(릴리스에 CAR_WINDOWS 추가와 release 권한 검사 갱신 필요), T3-8 첫 실행 안내, T3-9 AUTO 연동 무시 옵션, T3-10 세션 자동 저장. 충전 세션은 제외(PLAN_CHANGES (7)). 최대 지연 조사: FINDINGS 참고(재현 안 됨). 이번 변경 이후 전체 `scripts/check.sh`와 release 빌드는 다시 돌리지 못했다. 접수용 APK는 태그 `submission-draft-1115` 시점 그대로다.
 - 11/15 접수용 스냅샷 2 `submission-draft-1115`: P 복귀 시 재생 이어 가기 구현(엔진 `Start` 명령 + `PlaybackGuard` 재개 훅, 단위 테스트 추가), `gear_regression.sh`를 새 동작에 맞게 고치고 정지 중 D→P·녹음 중 D→P 시나리오 추가, release APK `apk/TeamPJAM_PJAM_release.apk`(26.8MB, 서명, 권한 CAR_DRIVE·CAR_LIGHTS·CAR_CLIMATE), README를 기획서 8장 필수 5항목 순서로 재작성, DEMO.md에 "시연은 전체 화면으로". `SKIP_LONG=1 scripts/check.sh` 전부 PASS. push는 하지 않음.
 - 11/15 M2: T2-1~T2-10 완료. `check.sh` 101줄 PASS. 서브에이전트 검수 → `docs/REVIEW_M2.md`(필수만 수정), 태그 `p0-complete`. push는 하지 않음.
 - 11/15 접수용 스냅샷 `prototype-1115b`: 새 기능 없음. M0·M1 반영본으로 debug APK 교체(`apk/TeamPJAM_PJAM_prototype_debug.apk`, 33.5MB, debug 서명·debug 전용 권한 포함), README의 되는 것/안 되는 것·실행 방법 갱신, 사용자가 고친 CLAUDE.md 포함. `scripts/check.sh` 전부 PASS. push는 하지 않음.

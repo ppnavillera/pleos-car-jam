@@ -143,6 +143,7 @@ private fun WideStudio(st: EngineState, sel: TrackKind, barText: String?, assign
                 StatusText(st)
                 Spacer(Modifier.weight(1f))
                 TempoControls(st, vm)
+                KeyControls(st, vm)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TransportButtons(st, sel, vm, height = 64.dp)
@@ -174,6 +175,7 @@ private fun NarrowStudio(st: EngineState, sel: TrackKind, barText: String?, assi
         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
             StatusText(st)
             TempoControls(st, vm)
+            KeyControls(st, vm)
             TransportButtons(st, sel, vm, height = 52.dp)
             PageButtons(vm, height = 52.dp)
         }
@@ -226,6 +228,16 @@ private fun TempoControls(st: EngineState, vm: StudioViewModel) {
         OutlinedButton(onClick = { vm.bpmDelta(-5) }, modifier = Modifier.semantics { contentDescription = "btn_bpm_down" }) { Text("−", fontSize = 24.sp) }
         Text("${st.bpm} BPM", fontSize = 22.sp, color = Color.White, modifier = Modifier.semantics { contentDescription = "bpm_text" })
         OutlinedButton(onClick = { vm.bpmDelta(+5) }, modifier = Modifier.semantics { contentDescription = "btn_bpm_up" }) { Text("+", fontSize = 24.sp) }
+    }
+}
+
+/** 조(키) −3..+3 (T3-4). 설정 온도로도 바뀐다. */
+@Composable
+private fun KeyControls(st: EngineState, vm: StudioViewModel) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedButton(onClick = { vm.transposeDelta(-1) }, modifier = Modifier.semantics { contentDescription = "btn_key_down" }) { Text("−", fontSize = 22.sp) }
+        Text("조 ${if (st.transpose > 0) "+" else ""}${st.transpose}", fontSize = 20.sp, color = Color.White, modifier = Modifier.semantics { contentDescription = "key_text" })
+        OutlinedButton(onClick = { vm.transposeDelta(+1) }, modifier = Modifier.semantics { contentDescription = "btn_key_up" }) { Text("+", fontSize = 22.sp) }
     }
 }
 

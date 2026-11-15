@@ -38,6 +38,7 @@ done
 if log_has PJAM_PLEOS "capability HVAC_POWER accessType=READ"; then pass sdk-hvac-power-capability; else fail sdk-hvac-power-capability "PJAM_PLEOS 에 HVAC_POWER capability 없음"; fi
 
 if log_has PJAM_PLEOS "capability FAN_SPEED accessType=READ"; then pass sdk-fan-capability; else fail sdk-fan-capability "PJAM_PLEOS 에 FAN_SPEED capability 없음"; fi
+if log_has PJAM_PLEOS "capability TEMPERATURE accessType=READ"; then pass sdk-temperature-capability; else fail sdk-temperature-capability "PJAM_PLEOS 에 TEMPERATURE capability 없음"; fi
 
 # ---- 공조 변경 → 트랙 켜짐/꺼짐 (바뀔 때마다 뒤집힘) ----
 flip() { # <vc 필드> <기대 로그> <트랙>
@@ -80,6 +81,23 @@ fan 5 110 mid
 fan 1 70 min
 fan 8 140 max2
 fan 0 70 below-range   # capability 범위(1..8) 밖 값 → 최소(70)
+
+# ---- T3-4 설정 온도 → 조(키): 처음 온도가 기준 0, 0.5°C마다 반음, ±3 ----
+key() { # <온도> <기대 조 표시> <이름>
+  local pat="${2//+/\\+}"   # 정규식의 + 를 문자 그대로
+  A logcat -c
+  VC put /vehicle/hvac "driver_temp=$1" >/dev/null 2>&1
+  if wait_log PJAM_INPUT "→ 조 $pat" 4; then
+    sleep 0.5; dump_retry "$OUT/he-key-$3.xml"
+    if $UI text "$OUT/he-key-$3.xml" key_text | grep -qE "^조 $pat$"; then pass "vc-temp-$3-key-$2"; else fail "vc-temp-$3-key-$2" "화면 조 표시가 '조 $2'가 아님"; fi
+  else fail "vc-temp-$3-key-$2" "PJAM_INPUT 에 '→ 조 $2' 없음"; fi
+}
+VC put /vehicle/hvac driver_temp=22 >/dev/null 2>&1; sleep 1   # 기준(앱의 첫 값)
+key 23 +2 up
+key 21.5 -1 down
+key 30 +3 clamp-high
+key 16 -3 clamp-low
+key 22 0 back-to-base
 
 # ---- 내 차 장비 ----
 A logcat -c

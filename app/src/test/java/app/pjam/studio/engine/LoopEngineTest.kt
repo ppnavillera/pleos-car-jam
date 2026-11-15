@@ -6,11 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FakeSampler : Sampler {
-    data class Hit(val id: String, val atNanos: Long)
+    data class Hit(val id: String, val atNanos: Long, val transpose: Int = 0)
     var now = 0L
     val hits = ArrayList<Hit>()
     var stops = 0
-    override fun play(sampleId: String, velocity: Float, transpose: Int) { hits += Hit(sampleId, now) }
+    override fun play(sampleId: String, velocity: Float, transpose: Int) { hits += Hit(sampleId, now, transpose) }
     override fun stopAll() { stops++ }
     fun count(id: String) = hits.count { it.id == id }
 }
@@ -369,5 +369,29 @@ class LoopEngineTest {
         assertEquals(TrackStatus.PLAYING, kind(TrackKind.DRUM).status)
         // 루프 위치 4(= 재개 후 4스텝)에서 앞서 찍은 킥(위치 4)이 한 번 울린다
         assertEquals(1, sampler.count("drum_kick"))
+    }
+
+    @Test fun transposeAppliesToBassAndMelodyOnlyAndKeepsMetronomeAndDrumsPlain() {
+        engine.send(EngineCommand.LoadSong(Song("x", "x", 0, tracks = listOf(
+            Track(TrackKind.DRUM, listOf(Note(0, "drum_kick"))), Track(TrackKind.BASS, listOf(Note(0, "bass_1_o2"))),
+            Track(TrackKind.MELODY, listOf(Note(0, "mel_3"))), Track(TrackKind.FX, listOf(Note(0, "fx_impact")))))))
+        engine.send(EngineCommand.SetTranspose(2))
+        engine.send(EngineCommand.Start); engine.tick(now)
+        assertEquals(2, engine.state.value.transpose)
+        val byId = sampler.hits.associate { it.id to it.transpose }
+        assertEquals(0, byId["drum_kick"]); assertEquals(2, byId["bass_1_o2"]); assertEquals(2, byId["mel_3"]); assertEquals(0, byId["fx_impact"])
+        // 모니터링(연주 입력)도 같다
+        sampler.hits.clear()
+        engine.send(EngineCommand.Play("mel_5", now)); engine.tick(now + ms)
+        assertEquals(2, sampler.hits.single { it.id == "mel_5" }.transpose)
+    }
+
+    @Test fun transposeIsClampedAndLoadedFromSong() {
+        engine.send(EngineCommand.SetTranspose(9)); engine.tick(now)
+        assertEquals(3, engine.state.value.transpose)
+        engine.send(EngineCommand.SetTranspose(-9)); engine.tick(now)
+        assertEquals(-3, engine.state.value.transpose)
+        engine.send(EngineCommand.LoadSong(Song("x", "x", 0, transpose = 2))); engine.tick(now)
+        assertEquals(2, engine.state.value.transpose)
     }
 }
