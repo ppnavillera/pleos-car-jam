@@ -29,8 +29,8 @@ class AppContainer(context: Context) {
     val engine = LoopEngine(
         sampler,
         log = { Log.i("PJAM_ENG", it) },
-        onStepFired = { scheduled ->
-            stepLag.add(SystemClock.elapsedRealtimeNanos() - scheduled)
+        onStepFired = { step, scheduled ->
+            stepLag.onStep(step, SystemClock.elapsedRealtimeNanos() - scheduled)
             if (++lagSteps % 200 == 0) Log.i("PJAM_LAG", stepLag.summary().toString())
         },
     )

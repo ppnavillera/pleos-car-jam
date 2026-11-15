@@ -189,7 +189,11 @@ Vehicle SDK 2.3.2 AAR의 classes.jar를 javap로 확인(sources jar 없음) + �
 
 **차량 입력이 없는 상태 (7.1 7번)**: 디버그 빌드 전용 플래그 `files/screen_only`(`run-as app.pjam.studio --user 10 touch files/screen_only`; AAOS는 앱이 사용자 10으로 돈다)가 있으면 차량 소스를 만들지 않고 시작한다. 이 상태에서 `scripts/e2e_four_tracks.sh`가 화면 패드·핸들 대체 3버튼만으로 DRUM → BASS → MELODY → FX를 차례로 녹음해 4트랙을 완성하고(각 트랙 2칸 이상, 앞 트랙 유지), 화면에 "차량 신호를 쓸 수 없어요" 안내가 있는 것을 확인한다.
 
-**3분 연속 재생 (T2-9, M2 빌드)**: `scripts/lag_run.sh` 190초, 1200스텝: p50 0.13ms, **p95 0.81ms**, p99 2.16ms, **누락 스텝 0**, 최대 24.83ms(두 번째 구간 한 번, 이후 증가 없음). 최대값 24.83ms는 게이트(p95)와 별개지만 15ms를 넘는다: 이 측정 도중 호스트에서 Gradle release 빌드를 같이 돌리고 있어서 에뮬레이터가 CPU 경쟁을 겪었을 가능성이 크다(확정 아님). `check.sh`가 같은 측정을 `lag-3min`으로 다시 한다. 귀로 끊김이 안 들리는지는 [귀·눈].
+**3분 연속 재생 (T2-9, M2 빌드)**: `scripts/lag_run.sh` 190초, 1200스텝(DRUM 녹음 상태, 박마다 메트로놈, 1트랙 조건).
+- 첫 측정: p95 0.81ms, p99 2.16ms, 최대 24.83ms, `missed=0`. **이 `missed=0`은 의미가 없었다**: 검수(`docs/REVIEW_M2.md` 필수 1)에서 `StepLagStats.noteMissed`를 아무도 부르지 않아 항상 0이라는 것이 드러났다.
+- 수정 후 재측정(스텝 번호가 건너뛰면 세는 실제 카운터, 호스트에서 다른 작업 없이): p50 0.17ms, **p95 0.85ms**, p99 1.44ms, **최대 31.00ms(한 번)**, **누락 스텝 0**(이제 실제로 센 값). 단위 테스트(`StepLagStatsTest`)가 건너뛴 번호를 정확히 세는 것을 확인한다.
+- **최대값이 두 번 모두 15ms를 넘었다**(24.83ms, 31.00ms, 각각 한 번). 두 번째는 호스트가 놀고 있었으므로 첫 번째에 적었던 "호스트 빌드 부하 때문일 가능성"은 근거가 약해졌다. 원인은 모른다(에뮬레이터 스케줄링, GC 등 추정일 뿐 확인 못 함). 게이트(p95 < 15ms)는 통과하지만, 31ms는 스텝 길이(150ms)의 약 20%라 **귀에 들리는 박자 흔들림일 수 있다 → [귀·눈] 확인 필요**. 이 지표는 "엔진이 늦게 깨어난 정도"만 재고 SoundPool 출력 지연·끊김은 재지 않는다. 4트랙이 가득 찬 조건의 측정은 아직 없다(검수 권장 1).
+- `check.sh`의 `lag-3min`이 같은 측정을 하고 p95 < 15ms · 누락 0 · 1000스텝 이상이면 PASS로 본다.
 
 **콜백 보호 (T2-9)**: Vehicle SDK 콜백 본문(브레이크·방향지시등·핸들·공조 4종·전원)은 `SupportTracker.guard`로 감싸 예외가 나면 그 항목만 `FAILED`가 된다. 기어(`PleosGearSource` SDK 콜백, `AaosGearSignals`의 UX·CarPropertyManager·Car 연결 콜백)도 try/catch로 감쌌다. 단위 테스트(`SupportTrackerTest`)가 일반 예외·`NoClassDefFoundError`·`OutOfMemoryError`를 주입해 그 항목만 FAILED, 나머지 항목은 그대로인 것을 확인한다. SDK 쪽에서 실제로 예외를 일으키는 시험은 에뮬레이터에서 하지 못했다.
 

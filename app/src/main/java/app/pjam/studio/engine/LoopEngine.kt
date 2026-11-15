@@ -49,8 +49,8 @@ data class EngineState(
 class LoopEngine(
     private val sampler: Sampler,
     private val log: (String) -> Unit = {},
-    /** 스텝이 울리기 직전 호출된다(예정 시각 전달). 지연 측정용. 엔진 스레드에서 불린다. */
-    private val onStepFired: ((scheduledNanos: Long) -> Unit)? = null,
+    /** 스텝이 울리기 직전 호출된다(절대 스텝 번호와 예정 시각 전달). 지연·누락 측정용. 엔진 스레드에서 불린다. */
+    private val onStepFired: ((step: Long, scheduledNanos: Long) -> Unit)? = null,
 ) {
     private sealed interface Phase {
         data object Idle : Phase
@@ -232,7 +232,7 @@ class LoopEngine(
     // ---------------------------------------------------------------- 스텝
 
     private fun onStep(n: Long, scheduledNanos: Long) {
-        onStepFired?.invoke(scheduledNanos)
+        onStepFired?.invoke(n, scheduledNanos)
         // 뮤트는 스텝 경계에서 적용
         for (k in TrackKind.entries) mutedApplied[k] = mutedRequested.getValue(k)
 
