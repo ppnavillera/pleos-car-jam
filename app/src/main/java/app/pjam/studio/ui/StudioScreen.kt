@@ -96,6 +96,7 @@ fun StudioScreen(vm: StudioViewModel, debugPanel: Boolean) {
     val inputMode by vm.inputMode.collectAsStateWithLifecycle()
     val assignment by vm.toggleAssignment.collectAsStateWithLifecycle()
     val page by vm.page.collectAsStateWithLifecycle()
+    val pack by vm.settings.collectAsStateWithLifecycle()
 
     val screenOnly = inputMode == InputMode.SCREEN_ONLY
     val gearLabel = gearText(gear, method) + if (screenOnly) " · 차량 신호 없음, 화면 조작" else ""
@@ -246,6 +247,10 @@ private fun TransportButtons(st: EngineState, sel: TrackKind, vm: StudioViewMode
 /** 저장·보관함·설정 (T3-2, T3-3). */
 @Composable
 private fun PageButtons(vm: StudioViewModel, height: Dp) {
+    val pack = vm.settings.collectAsStateWithLifecycle().value.soundPackId
+    OutlinedButton(onClick = { vm.cyclePack() }, modifier = Modifier.height(height).semantics { contentDescription = "btn_pack_$pack" }) {
+        Text("사운드팩: ${app.pjam.studio.sound.SoundPacks.label(pack)}", fontSize = 18.sp)
+    }
     OutlinedButton(onClick = { vm.saveCurrent() }, modifier = Modifier.height(height).semantics { contentDescription = "btn_save" }) { Text("곡 저장", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.openPage(Page.LIBRARY) }, modifier = Modifier.height(height).semantics { contentDescription = "btn_library" }) { Text("보관함", fontSize = 18.sp) }
     OutlinedButton(onClick = { vm.openPage(Page.SETTINGS) }, modifier = Modifier.height(height).semantics { contentDescription = "btn_settings" }) { Text("설정", fontSize = 18.sp) }
@@ -317,6 +322,7 @@ private fun InputBar(text: String?) {
 @Composable
 private fun PadArea(kind: TrackKind, vm: StudioViewModel, fill: Boolean) {
     val color = accent(kind)
+    val pack = vm.settings.collectAsStateWithLifecycle().value.soundPackId
     Column(
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -337,7 +343,7 @@ private fun PadArea(kind: TrackKind, vm: StudioViewModel, fill: Boolean) {
                 Modifier.fillMaxWidth().height(if (fill) 150.dp else 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                row.forEach { id -> Pad(Modifier.weight(1f).fillMaxHeight(), id, color, vm) }
+                row.forEach { id -> Pad(Modifier.weight(1f).fillMaxHeight(), id, color, vm, pack) }
                 // 마지막 줄이 4개보다 적어도 폭이 같게(패드가 한 줄 4칸 기준). 3개짜리(BASS)는 3등분
                 if (row.size < 4 && kind != TrackKind.BASS) repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
             }
@@ -347,7 +353,7 @@ private fun PadArea(kind: TrackKind, vm: StudioViewModel, fill: Boolean) {
 
 /** 누르는 순간(pointer-down)에 시각을 찍는다. clickable은 뗄 때 반응하므로 쓰지 않는다. */
 @Composable
-private fun Pad(modifier: Modifier, sampleId: String, color: Color, vm: StudioViewModel) {
+private fun Pad(modifier: Modifier, sampleId: String, color: Color, vm: StudioViewModel, pack: String) {
     var pressed by remember { mutableStateOf(false) }
     Box(
         modifier
@@ -363,7 +369,7 @@ private fun Pad(modifier: Modifier, sampleId: String, color: Color, vm: StudioVi
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(Labels.sample(sampleId), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+        Text(Labels.sample(sampleId, pack), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Black)
     }
 }
 

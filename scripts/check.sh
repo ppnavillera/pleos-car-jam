@@ -36,7 +36,7 @@ APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
 
 # ---------- 2. 사운드 에셋 ----------
 if [ -f "$ROOT/tools/soundgen/verify.py" ]; then
-  if python3 "$ROOT/tools/soundgen/verify.py" >"$OUT/soundgen-verify.log" 2>&1; then pass soundgen-verify; else fail soundgen-verify "$OUT/soundgen-verify.log"; fi
+  if python3 "$ROOT/tools/soundgen/verify.py" all >"$OUT/soundgen-verify.log" 2>&1; then pass soundgen-verify; else fail soundgen-verify "$OUT/soundgen-verify.log"; fi
 else
   skip soundgen-verify "tools/soundgen/verify.py 없음"
 fi
@@ -168,6 +168,16 @@ if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -f "$ROOT/scri
   [ $LS -eq 0 ] || FAILED=1
 else
   skip library-settings "스튜디오 화면 또는 스크립트 없음"
+fi
+
+# ---------- 4d3. 사운드팩 전환 (T3-5) ----------
+if grep -q 'content-desc="studio_screen"' "$OUT/ui-main.xml" && [ -f "$ROOT/scripts/soundpack.sh" ]; then
+  bash "$ROOT/scripts/soundpack.sh" "$DEV" "$OUT" >"$OUT/soundpack.log" 2>&1
+  SP=$?
+  grep -E '^(PASS|FAIL)' "$OUT/soundpack.log"
+  [ $SP -eq 0 ] || FAILED=1
+else
+  skip soundpack "스튜디오 화면 또는 스크립트 없음"
 fi
 
 # ---------- 4e. 차량 입력 없이 화면만으로 4트랙 + 창 크기 변경 (T2-3, T2-8, 기획서 7.1 5번·7번) ----------

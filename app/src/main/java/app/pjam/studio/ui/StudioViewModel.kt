@@ -71,6 +71,9 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
 
     // ---- 설정 (T3-3) ----
     val settings: StateFlow<app.pjam.studio.data.Settings> = c.settings
+    /** 화면 버튼으로 사운드팩을 돌려가며 바꾼다 (T3-5). 다음 소리부터 새 팩이다. */
+    fun cyclePack() = c.updateSettings { it.copy(soundPackId = app.pjam.studio.sound.SoundPacks.next(it.soundPackId)) }
+    fun setPack(id: String) { if (app.pjam.studio.sound.SoundPacks.isKnown(id)) c.updateSettings { it.copy(soundPackId = id) } }
     fun setQuietMode(on: Boolean) = c.updateSettings { it.copy(quietMode = on) }
     fun latencyDelta(deltaMs: Int) = c.updateSettings { it.copy(latencyMs = it.latencyMs + deltaMs) }
 
@@ -120,6 +123,7 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
     fun loadSong(song: app.pjam.studio.engine.Song) {
         if (!c.guard.allowInput()) return
         c.engine.send(EngineCommand.LoadSong(song))
+        setPack(song.soundPackId) // 곡이 저장될 때의 사운드팩으로 들려준다
         tally.clear(); tally.putAll(song.inputSummary)
         c.focus.acquire()
         c.engine.send(EngineCommand.Start)
@@ -162,7 +166,7 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
         count("PAD")
         c.focus.acquire()
         c.engine.send(EngineCommand.Play(id, timestampNanos))
-        show("화면 패드 → ${Labels.sample(id)}")
+        show("화면 패드 → ${Labels.sample(id, c.settings.value.soundPackId)}")
     }
 
     /** 핸들 대체 화면 3버튼 (기획서 6.3): 소리는 내지 않고 BASS의 현재 음 / MELODY의 커서만 옮긴다. */
@@ -187,7 +191,7 @@ class StudioViewModel(private val c: AppContainer) : ViewModel() {
                 c.focus.acquire()
                 c.engine.send(EngineCommand.Play(id, e.timestampNanos))
                 val src = when (e.source) { TriggerSource.BRAKE -> "브레이크"; TriggerSource.TURN_LEFT -> "방향지시등 좌"; TriggerSource.TURN_RIGHT -> "방향지시등 우" }
-                show("$src → ${Labels.sample(id)}")
+                show("$src → ${Labels.sample(id, c.settings.value.soundPackId)}")
             }
             is InputEvent.Zone -> {
                 mapper.onZone(kind, e.zone)

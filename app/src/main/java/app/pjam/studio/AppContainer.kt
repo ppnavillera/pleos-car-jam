@@ -30,7 +30,8 @@ import java.io.File
 /** 수동 DI. 엔진은 Activity 밖(앱 범위)에서 보유한다. */
 class AppContainer(private val context: Context) {
     val clock = Clock { SystemClock.elapsedRealtimeNanos() }
-    val sampler = SoundPoolSampler(context)
+    private val initialSettings = FileSettingsStore(File(context.filesDir, "settings.json")) { Log.w("PJAM_DATA", it) }.load()
+    val sampler = SoundPoolSampler(context, initialSettings.soundPackId.takeIf { app.pjam.studio.sound.SoundPacks.isKnown(it) } ?: app.pjam.studio.sound.SoundPacks.DEFAULT)
     /** 스텝 호출 시각 오차(T0-13/T2-9). 200스텝(100BPM에서 30초)마다 한 줄 요약. */
     val stepLag = StepLagStats()
     private var lagSteps = 0
@@ -89,6 +90,7 @@ class AppContainer(private val context: Context) {
 
     private fun applySettings(s: Settings) {
         engine.send(EngineCommand.SetLatencyNanos(s.latencyMs * 1_000_000L))
+        sampler.setPack(s.soundPackId)
     }
 
     /** 디버그 패널이 쓰는 가짜 입력. 실제 SDK 입력과 병행한다. */

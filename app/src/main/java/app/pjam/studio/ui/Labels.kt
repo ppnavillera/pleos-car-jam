@@ -35,6 +35,20 @@ object Labels {
         TrackKind.FX -> "브레이크 = 임팩트 · 방향지시등 좌 = 라이저 · 방향지시등 우 = 스윕"
     }
 
+    /** 사운드팩에 따라 같은 sampleId가 다른 악기다 (차량 팩: 도어·트렁크·방향지시등 릴레이·버클·경적·시동·경고 차임). */
+    fun sample(id: String, pack: String): String {
+        if (pack != app.pjam.studio.sound.SoundPacks.CAR) return sample(id)
+        return when (id) {
+            "drum_kick" -> "도어"; "drum_snare" -> "트렁크"; "drum_hihat" -> "방향지시등"; "drum_clap" -> "버클"
+            "fx_impact" -> "경적"; "fx_riser" -> "시동"; "fx_sweep" -> "경고 차임"; "fx_zap" -> "후방 경고"
+            else -> when {
+                id.startsWith("bass_") -> { val p = id.split("_"); "경적 ${p[1]}도 ${p[2].removePrefix("o")}" }
+                id.startsWith("mel_") -> "경적 " + sample(id)
+                else -> sample(id)
+            }
+        }
+    }
+
     fun sample(id: String): String = when (id) {
         "drum_kick" -> "킥"; "drum_snare" -> "스네어"; "drum_hihat" -> "하이햇"; "drum_clap" -> "클랩"
         "fx_impact" -> "임팩트"; "fx_riser" -> "라이저"; "fx_sweep" -> "스윕"; "fx_zap" -> "잽"

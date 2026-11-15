@@ -6,4 +6,7 @@ interface Sampler {
     fun play(sampleId: String, velocity: Float = 1f, transpose: Int = 0)
 
     fun stopAll()
+
+    /** 사운드팩을 바꾼다. 이미 울리는 소리는 그대로 두고 다음 play()부터 새 팩의 소리가 난다. 같은 sampleId가 팩마다 다른 악기다. */
+    fun setPack(packId: String) {}
 }

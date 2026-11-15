@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""assets/soundpacks/basic 의 WAV 목록의 WAV를 검증한다. 실패하면 종료 코드 1."""
+"""assets/soundpacks/<팩>의 WAV를 검증한다 (인자: 팩 이름, 기본 basic; 모두: all). 실패하면 종료 코드 1."""
 import math
 import os
 import sys
@@ -7,7 +7,8 @@ import wave
 import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PACK = os.path.normpath(os.path.join(HERE, "..", "..", "assets", "soundpacks", "basic"))
+PACKS_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "assets", "soundpacks"))
+PACK = os.path.join(PACKS_DIR, "basic")
 
 EXPECTED = (
     ["drum_kick", "drum_snare", "drum_hihat", "drum_clap"]
@@ -39,7 +40,28 @@ def power_at(x, freq, sr):
     return re * re + im * im
 
 
+# 팩마다 악기가 다르다: 차량 팩의 메트로놈은 방향지시등 릴레이 "딱/똑"(음높이가 없는 클릭)이다.
+NO_PITCH = {"car": {"metro_hi", "metro_lo"}}
+# 귀에 거슬리지 않게 짧고 부드럽게 다듬은 소리의 상한 (차량 팩 경적 계열)
+SOFT_MAX_DUR = {"car": {**{"bass_%d_o%d" % (d, o): 0.6 for d in (1, 4, 5) for o in (1, 2, 3)}, **{"mel_%d" % i: 0.6 for i in range(8)}, "fx_impact": 0.7}}
+SOFT_MAX_PEAK = {"car": {**{"bass_%d_o%d" % (d, o): 0.7 for d in (1, 4, 5) for o in (1, 2, 3)}, **{"mel_%d" % i: 0.7 for i in range(8)}, "fx_impact": 0.7}}
+
+
+def check(pack_name):
+    global PACK
+    PACK = os.path.join(PACKS_DIR, pack_name)
+    print("== 팩: %s" % pack_name)
+    return run(pack_name)
+
+
 def main():
+    names = sys.argv[1:] or ["basic"]
+    if names == ["all"]:
+        names = sorted(d for d in os.listdir(PACKS_DIR) if os.path.isdir(os.path.join(PACKS_DIR, d)))
+    return 1 if any(check(n) for n in names) else 0
+
+
+def run(pack_name):
     errors = []
     if not os.path.isdir(PACK):
         print("FAIL: 폴더 없음 " + PACK)
@@ -74,7 +96,9 @@ def main():
         if peak > LIMIT_PEAK: bad.append("peak=%d>%d" % (peak, LIMIT_PEAK))
         if rms <= 0: bad.append("silent")
         if x[0] != 0 or abs(x[-1]) > 0: bad.append("edge nonzero %d/%d" % (x[0], x[-1]))
-        if name in PITCH:
+        if dur > SOFT_MAX_DUR.get(pack_name, {}).get(name, 99): bad.append("dur=%.3f 너무 김(부드럽게 짧게)" % dur)
+        if peak / 32767 > SOFT_MAX_PEAK.get(pack_name, {}).get(name, 99): bad.append("peak=%.3f 너무 큼(부드럽게)" % (peak / 32767))
+        if name in PITCH and name not in NO_PITCH.get(pack_name, set()):
             f0 = PITCH[name]
             seg = x[: min(nf, int(0.25 * sr))]
             p0 = power_at(seg, f0, sr)
@@ -90,7 +114,7 @@ def main():
         for e in errors:
             print("FAIL " + e)
         return 1
-    print("PASS")
+    print("PASS %s" % pack_name)
     return 0
 
 

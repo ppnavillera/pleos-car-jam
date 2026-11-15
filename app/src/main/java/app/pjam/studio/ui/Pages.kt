@@ -106,6 +106,17 @@ fun SettingsScreen(vm: StudioViewModel, wide: Boolean) {
         SettingCard("조용한 연주 모드", "켜면 방향지시등과 와이퍼 입력을 무시해요. 주변에 차량과 사람이 많을 때 쓰세요. 브레이크·핸들·공조·화면 패드는 그대로예요.") {
             Switch(checked = st.quietMode, onCheckedChange = { vm.setQuietMode(it) }, modifier = Modifier.semantics { contentDescription = "switch_quiet_${if (st.quietMode) "on" else "off"}" })
         }
+        SettingCard("사운드팩", "같은 조작이 다른 악기로 울려요. 차량 팩은 도어·트렁크·방향지시등 릴레이·경적·시동음 같은 차에서만 나는 소리를 악기로 써요. 메트로놈도 방향지시등 똑딱 소리로 바뀌어요.") {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                app.pjam.studio.sound.SoundPacks.ALL.forEach { id ->
+                    val on = st.soundPackId == id
+                    val label: @Composable () -> Unit = {
+                        Text(app.pjam.studio.sound.SoundPacks.label(id), fontSize = 18.sp, modifier = Modifier.semantics { contentDescription = "settings_pack_${id}${if (on) "_selected" else ""}" })
+                    }
+                    if (on) Button(onClick = { vm.setPack(id) }) { label() } else OutlinedButton(onClick = { vm.setPack(id) }) { label() }
+                }
+            }
+        }
         SettingCard("입력 지연 보정", "입력 시각에서 이만큼 빼고 박자에 맞춰요. 소리가 항상 늦게 찍히면 올려 보세요. 기본 0ms.") {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = { vm.latencyDelta(-Settings.LATENCY_STEP_MS) }, modifier = Modifier.semantics { contentDescription = "btn_latency_down" }) { Text("−", fontSize = 24.sp) }
